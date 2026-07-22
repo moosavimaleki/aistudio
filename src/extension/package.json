@@ -1,0 +1,9 @@
+{
+  "name": "aistudio-container-extension",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "pretest": "python3 build.py",
+    "test": "node --test tests/*.test.cjs"
+  }
+}

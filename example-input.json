@@ -1,0 +1,14 @@
+{
+  "model": "models/gemini-3.1-pro-preview",
+  "history": [
+    { "role": "user", "text": "سلام" },
+    { "role": "model", "text": "سلام! چگونه می‌توانم کمک کنم؟" }
+  ],
+  "prompt": "پایتخت ایران کجاست؟",
+  "generationConfig": {
+    "maxOutputTokens": 65536,
+    "candidateCount": 1,
+    "temperature": 0.95,
+    "topK": 64
+  }
+}

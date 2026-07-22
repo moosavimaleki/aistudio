@@ -1,0 +1,92 @@
+services:
+  browser-interface:
+    image: aistudio-browser-interface:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: botguard-micro-browser2
+    ports:
+      - "127.0.0.1:3345:3345"
+      - "127.0.0.1:5900:5900"
+      - "127.0.0.1:7900:7900"
+    env_file:
+      - ./.env
+    environment:
+      - PORT=3345
+      - FACTORY_ORIGIN=http://127.0.0.1:3345
+      - LAB_PROXY_URL=http://host.docker.internal:10808
+      - CHROME_EXECUTABLE=/usr/bin/google-chrome
+      - CHROME_RUNTIME_DIR=/tmp/aistudio-browsers
+      - EXTENSION_SOURCE_DIR=/app/extension
+      - SELENIUM_RUNTIME_DIR=/app/selenium/runtime
+      - CHROME_CDP_BASE_PORT=${CHROME_CDP_BASE_PORT:-9223}
+      - AISTUDIO_DEFAULT_BROWSER_ID=${AISTUDIO_DEFAULT_BROWSER_ID:-}
+      - EXPECTED_BROWSER_MAJOR=${EXPECTED_BROWSER_MAJOR:-}
+      - TOKEN_FACTORY_SAME_BROWSER_PROBE=${TOKEN_FACTORY_SAME_BROWSER_PROBE:-0}
+      - AISTUDIO_PAGE_READY_TIMEOUT_MS=${AISTUDIO_PAGE_READY_TIMEOUT_MS:-60000}
+      - AISTUDIO_COOKIE_DIR=/app/cookies
+      - TOKEN_FACTORY_URL=http://127.0.0.1:3345/get-token
+      - AISTUDIO_PROXY_URL=http://host.docker.internal:10808
+      - REDIS_URL=redis://redis:6379/0
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./COOKIES:/app/cookies:ro
+    shm_size: "1gb"
+    init: true
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3345/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  gencontent:
+    image: aistudio-browser-interface:local
+    pull_policy: never
+    container_name: aistudio-gencontent
+    entrypoint: ["/opt/bin/run-gencontent"]
+    ports:
+      - "127.0.0.1:${GENCONTENT_HOST_PORT:-3346}:8000"
+    env_file:
+      - ./.env
+    environment:
+      - GENCONTENT_PORT=8000
+      - GENCONTENT_WORKERS=${GENCONTENT_WORKERS:-2}
+      - REDIS_URL=redis://redis:6379/0
+      - TAB_POOL_MAX=${TAB_POOL_MAX:-100}
+      - TAB_POOL_WAIT_SECONDS=${TAB_POOL_WAIT_SECONDS:-5}
+      - TAB_POOL_LEASE_SECONDS=${TAB_POOL_LEASE_SECONDS:-600}
+      - AISTUDIO_COOKIE_DIR=/app/cookies
+      - TOKEN_FACTORY_URL=http://browser-interface:3345/get-token
+      - AISTUDIO_PROXY_URL=http://host.docker.internal:10808
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./COOKIES:/app/cookies:ro
+    init: true
+    restart: unless-stopped
+    depends_on:
+      browser-interface:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    container_name: aistudio-tab-pool-redis
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 20

@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+
+# Runtime-only browser state and staging cookie material.
+src/runtime/
+src/chrome-profile/
+src/selenium/runtime/
+src/extension/dist/
+node_modules/
+aistudio.google.com-*
+.idea
+COOKIES/*.txt

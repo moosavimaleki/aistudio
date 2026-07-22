@@ -1,0 +1,25 @@
+version: 1
+
+aistudio:
+  origin: "https://aistudio.google.com"
+  bootstrap_url: "https://aistudio.google.com/prompts/new_chat"
+  account_bootstrap_url: "https://aistudio.google.com/u/{auth_user}/prompts/new_chat"
+
+runtime:
+  global_object: "WIZ_global_data"
+  api_key_property: "WIu0Nc"
+  visit_id_property: "teM9xe"
+  attestation_enabled_property: "UsvuEb"
+
+makersuite:
+  base_url: "https://alkalimakersuite-pa.clients6.google.com"
+  service: "google.internal.alkali.applications.makersuite.v1.MakerSuiteService"
+  logging_context_header: "X-Goog-Ext-519733851-bin"
+
+drive:
+  upload_url: "https://content.googleapis.com/upload/drive/v3/files"
+
+attestation:
+  namespace: "botguard"
+  entrypoint: "a"
+  digest_property: "content"

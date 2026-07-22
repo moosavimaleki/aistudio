@@ -1,0 +1,9 @@
+node_modules
+chrome-profile
+runtime
+src/selenium/runtime
+src/extension/dist
+__pycache__
+*.py[cod]
+.git
+test
