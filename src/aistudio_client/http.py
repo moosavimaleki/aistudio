@@ -32,7 +32,7 @@ class HttpClient:
                     return response
             except requests.RequestException as error:
                 if attempt == retries:
-                    detail = f"{type(error).__name__}: {error}"
+                    detail = type(error).__name__
                     raise ClientError(
                         f"HTTP transport failed ({detail})",
                         phase="NETWORK",

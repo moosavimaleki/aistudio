@@ -48,8 +48,14 @@ def inline_data(path: str | Path, *, mime_type: str | None = None) -> dict[str, 
     content = file_path.read_bytes()
     if not content:
         raise ValueError(f"File is empty: {file_path}")
+    detected_type = mimetypes.guess_type(file_path.name)[0]
+    if mime_type and detected_type and mime_type != detected_type:
+        raise ValueError(
+            f"mime_type {mime_type!r} does not match {file_path.name!r}; "
+            f"use {detected_type!r} or omit mime_type"
+        )
     return {
-        "mimeType": mime_type or mimetypes.guess_type(file_path.name)[0] or "application/octet-stream",
+        "mimeType": mime_type or detected_type or "application/octet-stream",
         "displayName": file_path.name,
         "data": base64.b64encode(content).decode("ascii"),
     }

@@ -354,6 +354,14 @@ Content-Type: multipart/related; boundary=<generated>
 
 multipart شامل metadata JSON با `name` و `parents:[appFolderId]` و سپس bytes/base64 با MIME واقعی فایل است. پاسخ `drive#file` شامل `id` می‌دهد.
 
+MIME اعلام‌شده باید با محتوای واقعی فایل یکسان باشد؛ برای نمونه MP3 باید با
+`audio/mpeg` ارسال شود، نه `text/plain`. در helper مثال‌ها بهتر است
+`mime_type` حذف شود تا از پسوند فایل تشخیص داده شود.
+
+پیاده‌سازی آزمایشگاه برای فایل‌های حداکثر ۵ MiB از همین multipart استفاده
+می‌کند. فایل‌های بزرگ‌تر با Drive resumable upload و chunkهای ۸ MiB به‌صورت
+bytes خام ارسال می‌شوند تا سربار base64 و timeout یک درخواست بزرگ حذف شود.
+
 در payload:
 
 ```js
