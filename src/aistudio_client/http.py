@@ -24,13 +24,19 @@ class HttpClient:
 
     def request(self, method: str, url: str, *, retries: int = 0, retryable: bool = False, **kwargs):
         proxies = None if not self.proxy_url or _is_local(url) else {"http": self.proxy_url, "https": self.proxy_url}
+        timeout = kwargs.pop("timeout", self.timeout)
         for attempt in range(retries + 1):
             try:
-                response = self.session.request(method, url, proxies=proxies, timeout=self.timeout, **kwargs)
+                response = self.session.request(method, url, proxies=proxies, timeout=timeout, **kwargs)
                 if not retryable or response.status_code not in {408, 429, 500, 502, 503, 504} or attempt == retries:
                     return response
             except requests.RequestException as error:
                 if attempt == retries:
-                    raise ClientError("HTTP transport failed", phase="NETWORK", retryable=True) from error
+                    detail = f"{type(error).__name__}: {error}"
+                    raise ClientError(
+                        f"HTTP transport failed ({detail})",
+                        phase="NETWORK",
+                        retryable=True,
+                    ) from error
             time.sleep(0.15 * (attempt + 1))
         raise AssertionError("unreachable")

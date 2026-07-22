@@ -17,12 +17,13 @@ response = generate_content(
             "role": "user",
             "parts": [
                 # ترتیب partها مهم است و متن می‌تواند کنار فایل قرار بگیرد.
-                {"text": "این یادداشت جلسه را در سه bullet خلاصه کن."},
+                {"text": "متن کامل این فایل رو استخراج کن"},
                 # اجرای دوبارهٔ این مثال، upload تازه انجام می‌دهد.
-                {"inlineData": inline_data(file_path, mime_type="text/plain")},
+                {"inlineData": inline_data("/home/h-mousavi/Downloads/s.mp3", mime_type="text/plain")},
+                # {"inlineData": inline_data("/home/h-mousavi/Downloads/l.mp3", mime_type="text/plain")},
             ],
         }],
-        "generationConfig": {**thinking(), "temperature": 0.2, "maxOutputTokens": 250},
+        "generationConfig": {**thinking(), "temperature": 0.2},
     },
 )
 print_result(response)
