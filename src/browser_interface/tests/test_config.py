@@ -36,3 +36,4 @@ class BrowserConfigTests(TestCase):
             config.browsers[0].cookie_header,
             config.browsers[1].cookie_header,
         )
+        self.assertEqual(config.browsers[0].cookie_file.name, "account-1.txt")

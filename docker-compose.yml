@@ -16,7 +16,7 @@ services:
       - FACTORY_ORIGIN=http://127.0.0.1:3345
       - LAB_PROXY_URL=http://host.docker.internal:10808
       - CHROME_EXECUTABLE=/usr/bin/google-chrome
-      - CHROME_RUNTIME_DIR=/tmp/aistudio-browsers
+      - CHROME_RUNTIME_DIR=/app/browser-profiles
       - EXTENSION_SOURCE_DIR=/app/extension
       - SELENIUM_RUNTIME_DIR=/app/selenium/runtime
       - CHROME_CDP_BASE_PORT=${CHROME_CDP_BASE_PORT:-9223}
@@ -31,7 +31,10 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - ./COOKIES:/app/cookies:ro
+      - ./COOKIES:/app/cookies
+      - browser_profiles:/app/browser-profiles
+    group_add:
+      - "${COOKIE_WRITER_GID:-1000}"
     shm_size: "1gb"
     init: true
     restart: unless-stopped
@@ -90,3 +93,6 @@ services:
       interval: 2s
       timeout: 2s
       retries: 20
+
+volumes:
+  browser_profiles:

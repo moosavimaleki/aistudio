@@ -21,7 +21,7 @@ COPY src/gencontent ./gencontent
 
 RUN chmod +x /app/selenium/entrypoint.sh /app/selenium/scripts/*.sh \
         /opt/bin/run-browser-interface /opt/bin/run-python-client /opt/bin/run-gencontent \
-    && mkdir -p /app/selenium/runtime \
+    && mkdir -p /app/selenium/runtime /app/browser-profiles \
     && chown -R seluser:seluser /app /opt/bin/run-browser-interface \
         /opt/bin/run-python-client /opt/bin/run-gencontent
 

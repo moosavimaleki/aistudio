@@ -59,7 +59,8 @@ class BrowserFleet:
         return self._slots[self.resolve(browser_id)].session
 
     def configured_cookies(self, browser_id: str) -> str | None:
-        return self._slots[self.resolve(browser_id)].spec.cookie_header
+        slot = self._slots[self.resolve(browser_id)]
+        return slot.session.current_cookie_header or slot.spec.cookie_header
 
     def auth_user(self, browser_id: str) -> str:
         return self._slots[self.resolve(browser_id)].spec.auth_user
@@ -73,7 +74,8 @@ class BrowserFleet:
         spec = self._slots[self.resolve(browser_id)].spec
         if not spec.cookie_header:
             return
-        expected = session_fingerprint(spec.cookie_header, spec.auth_user)
+        expected_header = self.configured_cookies(browser_id) or spec.cookie_header
+        expected = session_fingerprint(expected_header, spec.auth_user)
         actual = session_fingerprint(cookie_header, auth_user)
         if expected != actual:
             raise BrowserIdentityMismatch(
@@ -95,7 +97,13 @@ class BrowserFleet:
 
     def _create_slot(self, spec: BrowserSpec, port: int, index: int) -> BrowserSlot:
         process = ChromeProcess(spec, port, index)
-        session = BrowserSession(self.broker, spec.browser_id, process.cdp_url)
+        session = BrowserSession(
+            self.broker,
+            spec.browser_id,
+            process.cdp_url,
+            spec.cookie_file,
+            process.profile_path,
+        )
         return BrowserSlot(spec=spec, process=process, session=session)
 
     async def _warm_slot(self, slot: BrowserSlot) -> None:

@@ -30,3 +30,18 @@ class ChromeProcessTests(TestCase):
         self.assertIn('"browserId": "browser2"', script)
         self.assertIn("http://factory:3345", script)
         self.assertIn("--remote-debugging-port=9224", arguments)
+
+    def test_existing_profile_is_not_deleted(self):
+        with TemporaryDirectory() as directory:
+            profile = Path(directory) / "profile"
+            profile.mkdir()
+            marker = profile / "Local State"
+            marker.write_text("device state", encoding="utf-8")
+            lock = profile / "SingletonLock"
+            lock.symlink_to("stale-process")
+
+            ChromeProcess._ensure_directory(profile)
+            ChromeProcess._remove_stale_locks(profile)
+
+            self.assertEqual(marker.read_text(encoding="utf-8"), "device state")
+            self.assertFalse(lock.exists())

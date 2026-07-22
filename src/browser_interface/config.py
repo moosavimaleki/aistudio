@@ -16,6 +16,7 @@ class BrowserSpec:
     browser_id: str
     auth_user: str = "0"
     cookie_header: str | None = None
+    cookie_file: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -53,6 +54,7 @@ def _cookie_directory_specs(values: dict[str, str]) -> tuple[BrowserSpec, ...]:
                 browser_id=browser_id,
                 auth_user=auth_user,
                 cookie_header=read_cookie_file(str(path)),
+                cookie_file=path,
             )
         )
     return tuple(specs)

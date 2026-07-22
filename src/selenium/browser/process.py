@@ -25,10 +25,15 @@ class ChromeProcess:
     def cdp_url(self) -> str:
         return f"http://127.0.0.1:{self.port}"
 
+    @property
+    def profile_path(self) -> Path:
+        return self._browser_path("profiles")
+
     async def start(self) -> None:
         profile = self._browser_path("profiles")
         extension = self._browser_path("extensions")
-        self._reset_directory(profile)
+        self._ensure_directory(profile)
+        self._remove_stale_locks(profile)
         self._reset_directory(extension)
         shutil.copytree(self._extension_source(), extension, dirs_exist_ok=True)
         self._write_extension_config(extension)
@@ -95,13 +100,22 @@ class ChromeProcess:
         raise RuntimeError(f"Chrome {self.spec.browser_id} CDP endpoint did not become ready")
 
     def _browser_path(self, category: str) -> Path:
-        root = Path(os.getenv("CHROME_RUNTIME_DIR", "/tmp/aistudio-browsers"))
+        root = Path(os.getenv("CHROME_RUNTIME_DIR", "/app/browser-profiles"))
         return root / category / self.spec.browser_id
 
     @staticmethod
     def _reset_directory(path: Path) -> None:
         shutil.rmtree(path, ignore_errors=True)
         path.mkdir(parents=True, exist_ok=True)
+
+    @staticmethod
+    def _ensure_directory(path: Path) -> None:
+        path.mkdir(parents=True, exist_ok=True)
+
+    @staticmethod
+    def _remove_stale_locks(profile: Path) -> None:
+        for name in ("SingletonLock", "SingletonCookie", "SingletonSocket"):
+            (profile / name).unlink(missing_ok=True)
 
     @staticmethod
     def _extension_source() -> Path:
