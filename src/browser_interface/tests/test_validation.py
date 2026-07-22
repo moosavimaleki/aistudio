@@ -2,6 +2,7 @@ import hashlib
 from unittest import TestCase
 
 from browser_interface.validation import compute_content_digest, validate_token_request
+from shared import upstream_value
 
 
 class ValidationTests(TestCase):
@@ -35,6 +36,12 @@ class ValidationTests(TestCase):
         with self.assertRaisesRegex(ValueError, "cookie context differs"):
             validate_token_request(body)
 
+    def test_different_waa_key_is_rejected(self):
+        body = _valid_body()
+        body["waaApiKey"] = "wrong"
+        with self.assertRaisesRegex(ValueError, "upstream config"):
+            validate_token_request(body)
+
 
 def _valid_body() -> dict:
     payload = ["models/test", [[[[None, "سلام"]], "user"]], [], [], None]
@@ -43,11 +50,14 @@ def _valid_body() -> dict:
         "digest": compute_content_digest(payload),
         "cookies": cookies,
         "authorization": "SAPISIDHASH proof",
-        "waaApiKey": "waa-key",
+        "waaApiKey": upstream_value("opaque", "waa_api_key"),
         "authUser": "1",
         "generateRequest": {
             "method": "POST",
-            "url": "https://host/MakerSuiteService/GenerateContent",
+            "url": (
+                "https://host/"
+                f'{upstream_value("makersuite", "service")}/GenerateContent'
+            ),
             "headers": {
                 "Authorization": "SAPISIDHASH proof",
                 "Cookie": cookies,

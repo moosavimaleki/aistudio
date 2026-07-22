@@ -5,4 +5,5 @@
 globalThis.AISTUDIO_BRIDGE_CONFIG = {
   browserId: "default",
   factoryOrigin: "http://127.0.0.1:3345",
+  pageMatch: null,
 };

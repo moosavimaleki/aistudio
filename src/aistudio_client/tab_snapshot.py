@@ -73,7 +73,10 @@ def _is_complete(data: dict, runtime: dict) -> bool:
 
 def _token_factory(tab: AIStudioTab, settings: Settings) -> StagingTokenFactory:
     if not settings.token_factory_url or not settings.waa_api_key or not tab.runtime:
-        raise ClientError("TOKEN_FACTORY_URL and WAA_API_KEY are required", phase="CONFIG")
+        raise ClientError(
+            "TOKEN_FACTORY_URL and opaque.waa_api_key are required",
+            phase="CONFIG",
+        )
     return StagingTokenFactory(
         tab.http,
         settings.token_factory_url,

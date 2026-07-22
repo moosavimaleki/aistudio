@@ -7,9 +7,10 @@ import json
 from .cookies import CookieJar
 from .errors import response_error
 from .http import HttpClient
+from shared import upstream_value
 
-MAKER_SUITE_BASE = "https://alkalimakersuite-pa.clients6.google.com"
-MAKER_SUITE_SERVICE = "google.internal.alkali.applications.makersuite.v1.MakerSuiteService"
+MAKER_SUITE_BASE = upstream_value("makersuite", "base_url")
+MAKER_SUITE_SERVICE = upstream_value("makersuite", "service")
 
 
 def rpc_url(method: str) -> str:

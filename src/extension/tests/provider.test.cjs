@@ -8,7 +8,12 @@ const { createSnapshotService } = require("../page/snapshot-service.js");
 
 test("provider hook captures native snapshots and primes only once", async () => {
   const root = { botguard: {} };
-  const store = createProviderStore(root, async () => {});
+  const config = {
+    attestationNamespace: "botguard",
+    attestationEntrypoint: "a",
+    digestProperty: "content",
+  };
+  const store = createProviderStore(root, async () => {}, config);
   store.install();
 
   let snapshotCount = 0;
@@ -17,7 +22,7 @@ test("provider hook captures native snapshots and primes only once", async () =>
   };
   root.botguard.a(null, () => {});
 
-  const service = createSnapshotService(store, async () => {});
+  const service = createSnapshotService(store, async () => {}, config);
   const first = await service.create("a".repeat(64));
   const second = await service.create("b".repeat(64));
 

@@ -7,8 +7,10 @@ from urllib.parse import quote, urlencode
 
 from ..errors import ClientError, response_error
 from .multipart import build_multipart
+from shared import upstream_value
 
-DRIVE_UPLOAD_URL = "https://content.googleapis.com/upload/drive/v3/files"
+DRIVE_UPLOAD_URL = upstream_value("drive", "upload_url")
+AISTUDIO_ORIGIN = upstream_value("aistudio", "origin")
 
 
 def upload_bytes(tab, *, name: str, folder_id: str, mime_type: str, content: bytes) -> str:
@@ -20,7 +22,7 @@ def upload_bytes(tab, *, name: str, folder_id: str, mime_type: str, content: byt
         "Authorization": f"Bearer {tab.oauth_access_token}",
         "Content-Type": f'multipart/related; boundary="{boundary}"',
         "Origin": tab.auth.origin,
-        "Referer": "https://aistudio.google.com/",
+        "Referer": f"{AISTUDIO_ORIGIN}/",
         "X-Goog-AuthUser": tab.runtime.auth_user,
         "X-ClientDetails": _client_details(tab.transport_profile),
         "X-Goog-Encode-Response-If-Executable": "base64",

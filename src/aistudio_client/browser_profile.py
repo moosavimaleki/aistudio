@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from shared import upstream_value
+
 DEFAULT_BROWSER_IDENTITY_HEADERS = {
     "Accept-Language": "en-US,en;q=0.9,fa;q=0.8,cs;q=0.7",
     "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
@@ -13,8 +15,9 @@ DEFAULT_BROWSER_IDENTITY_HEADERS = {
     "sec-ch-ua-mobile": "?0", "sec-ch-ua-model": '""', "sec-ch-ua-platform": '"Linux"',
     "sec-ch-ua-platform-version": '""', "sec-ch-ua-wow64": "?0",
     "X-Browser-Channel": "stable", "X-Browser-Copyright": "Copyright 2026 Google LLC. All Rights Reserved.",
-    "X-Browser-Validation": "hIGp5sTH9H7kN4yktLLzTt2XfKM=", "X-Browser-Year": "2026",
-    "X-Client-Data": "CI+2yQEIo7bJAQipncoBCOHxygEIlqHLAQiHoM0BCM25zwEI5NCUMAiM1JQwCKTUlDAI9NaUMAio15QwGNvNlDAYj9SUMA==",
+    "X-Browser-Validation": upstream_value("opaque", "x_browser_validation"),
+    "X-Browser-Year": "2026",
+    "X-Client-Data": upstream_value("opaque", "x_client_data"),
 }
 
 

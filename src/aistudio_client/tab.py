@@ -98,7 +98,10 @@ class AIStudioTab:
             self._sync_session()
             self.transport_profile = factory_profile or create_browser_transport_profile()
             if not self.settings.token_factory_url or not self.settings.waa_api_key:
-                raise ClientError("TOKEN_FACTORY_URL and WAA_API_KEY are required", phase="CONFIG")
+                raise ClientError(
+                    "TOKEN_FACTORY_URL and opaque.waa_api_key are required",
+                    phase="CONFIG",
+                )
             self.token_factory = StagingTokenFactory(
                 self.http,
                 self.settings.token_factory_url,

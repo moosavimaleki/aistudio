@@ -17,6 +17,10 @@ const factory = globalThis.AIStudioFactoryClient.createFactoryClient(
   config.factoryOrigin,
   config.browserId,
 );
-const page = globalThis.AIStudioPageClient.createPageClient(chrome, protocol.jobMessage);
+const page = globalThis.AIStudioPageClient.createPageClient(
+  chrome,
+  protocol.jobMessage,
+  config.pageMatch,
+);
 
 globalThis.AIStudioWorker.startWorker({ chromeApi: chrome, factory, page, protocol });

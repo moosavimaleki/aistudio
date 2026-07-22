@@ -2,9 +2,10 @@
 
 (() => {
   // این client job را فقط به tab واقعی AI Studio در همان Chrome profile می‌رساند.
-  function createPageClient(chromeApi, jobMessage) {
+  function createPageClient(chromeApi, jobMessage, pageMatch) {
     async function execute(job) {
-      const tabs = await chromeApi.tabs.query({ url: "https://aistudio.google.com/*" });
+      if (!pageMatch) throw new Error("AI Studio page match is missing from extension config");
+      const tabs = await chromeApi.tabs.query({ url: pageMatch });
       const tab = tabs.find((candidate) => candidate.active) || tabs[0];
       if (!tab?.id) throw new Error("Container Chrome has no AI Studio tab");
 

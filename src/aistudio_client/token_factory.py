@@ -30,7 +30,7 @@ class StagingTokenFactory:
         browser_id: str | None = None,
     ) -> None:
         if not url or not waa_api_key:
-            raise ValueError("token factory requires URL and WAA_API_KEY")
+            raise ValueError("token factory requires URL and opaque.waa_api_key")
         self.http, self.url, self.waa_api_key, self.auth, self.runtime = http, url, waa_api_key, auth, runtime
         self.browser_id = browser_id
 

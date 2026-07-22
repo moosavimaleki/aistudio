@@ -5,6 +5,10 @@ import json
 from typing import Any
 
 from ..events import emit
+from shared import upstream_value
+
+
+GENERATE_RPC_PATH = f'{upstream_value("makersuite", "service")}/GenerateContent'
 
 
 async def prime_native_generate(context: Any, page: Any) -> None:
@@ -17,7 +21,7 @@ async def prime_native_generate(context: Any, page: Any) -> None:
 
     async def intercept(route: Any) -> None:
         request = route.request
-        if "MakerSuiteService/GenerateContent" not in request.url:
+        if GENERATE_RPC_PATH not in request.url:
             await route.continue_()
             return
         try:

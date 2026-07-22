@@ -7,6 +7,8 @@ COPY requirements.txt /tmp/requirements.txt
 RUN /opt/venv/bin/pip install --no-cache-dir -r /tmp/requirements.txt \
     && rm /tmp/requirements.txt
 
+COPY config ./config
+COPY src/shared ./shared
 COPY src/extension ./extension
 RUN /opt/venv/bin/python /app/extension/build.py
 COPY src/selenium ./selenium

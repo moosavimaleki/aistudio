@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 from aistudio_client.config import Settings, parse_env, parse_netscape_cookie_header
 from aistudio_client.cookie_files import discover_cookie_files
+from shared import upstream_value
 
 
 class ConfigTests(unittest.TestCase):
@@ -65,3 +66,4 @@ class ConfigTests(unittest.TestCase):
 
         self.assertEqual(settings.cookie_header, "SAPISID=environment")
         self.assertEqual(settings.model, "models/from-environment")
+        self.assertEqual(settings.waa_api_key, upstream_value("opaque", "waa_api_key"))

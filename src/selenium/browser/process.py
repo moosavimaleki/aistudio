@@ -6,6 +6,7 @@ import os
 import shutil
 from pathlib import Path
 from typing import BinaryIO, Protocol
+from shared import upstream_value
 
 
 class ChromeSpec(Protocol):
@@ -110,6 +111,7 @@ class ChromeProcess:
         config = {
             "browserId": self.spec.browser_id,
             "factoryOrigin": os.getenv("FACTORY_ORIGIN", "http://127.0.0.1:3345"),
+            "pageMatch": f'{upstream_value("aistudio", "origin")}/*',
         }
         target = extension / "config" / "runtime-config.js"
         target.parent.mkdir(parents=True, exist_ok=True)

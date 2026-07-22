@@ -5,8 +5,10 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from .cookie_files import discover_cookie_files
+from shared import upstream_value
 
 
 DEFAULT_ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
@@ -28,7 +30,10 @@ def parse_env(text: str) -> dict[str, str]:
     return values
 
 
-def parse_netscape_cookie_header(text: str, hostname: str = "aistudio.google.com") -> str:
+def parse_netscape_cookie_header(text: str, hostname: str | None = None) -> str:
+    hostname = hostname or urlsplit(upstream_value("aistudio", "origin")).hostname
+    if not hostname:
+        raise ValueError("aistudio.origin must contain a hostname")
     pairs: list[str] = []
     for raw_line in text.splitlines():
         line = raw_line.removeprefix("#HttpOnly_")
@@ -45,7 +50,7 @@ def parse_netscape_cookie_header(text: str, hostname: str = "aistudio.google.com
         if name and value:
             pairs.append(f"{name}={value}")
     if not pairs:
-        raise ValueError("Cookie file contains no cookies for aistudio.google.com")
+        raise ValueError(f"Cookie file contains no cookies for {hostname}")
     return "; ".join(pairs)
 
 
@@ -70,7 +75,7 @@ class Settings:
         environment_values = {
             name: value
             for name, value in os.environ.items()
-            if name.startswith("AISTUDIO_") or name in {"TOKEN_FACTORY_URL", "WAA_API_KEY"}
+            if name.startswith("AISTUDIO_") or name == "TOKEN_FACTORY_URL"
         }
         values.update(environment_values)
 
@@ -86,10 +91,10 @@ class Settings:
             env_file=resolved_env_file,
             values=values,
             cookie_header=cookie_header,
-            origin_url=values.get("AISTUDIO_ORIGIN_URL", "https://aistudio.google.com/prompts/new_chat"),
+            origin_url=upstream_value("aistudio", "bootstrap_url"),
             model=values.get("AISTUDIO_MODEL"),
             token_factory_url=values.get("TOKEN_FACTORY_URL"),
-            waa_api_key=values.get("WAA_API_KEY"),
+            waa_api_key=upstream_value("opaque", "waa_api_key"),
             proxy_url=values.get("AISTUDIO_PROXY_URL", "http://127.0.0.1:10808"),
             auth_user=values.get("AISTUDIO_AUTH_USER", "0"),
             browser_id=values.get("AISTUDIO_BROWSER_ID"),

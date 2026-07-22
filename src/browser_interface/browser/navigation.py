@@ -3,15 +3,17 @@
 from urllib.parse import quote
 
 from ..errors import InvalidCookieSession
+from shared import upstream_value
 
-DEFAULT_DOCUMENT_URL = "https://aistudio.google.com/prompts/new_chat"
+DEFAULT_DOCUMENT_URL = upstream_value("aistudio", "bootstrap_url")
+ACCOUNT_DOCUMENT_URL = upstream_value("aistudio", "account_bootstrap_url")
 
 
 def document_url(auth_user: str = "0") -> str:
     if str(auth_user) == "0":
         return DEFAULT_DOCUMENT_URL
     account = quote(str(auth_user), safe="")
-    return f"https://aistudio.google.com/u/{account}/prompts/new_chat"
+    return ACCOUNT_DOCUMENT_URL.format(auth_user=account)
 
 
 async def navigate_to_account(page, auth_user: str) -> None:

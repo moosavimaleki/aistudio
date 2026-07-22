@@ -34,6 +34,7 @@
 - منبع cookieها فایل‌های Netscape با پسوند `.txt` در پوشهٔ ریشه‌ای `COOKIES/` هستند. هر فایل یک browser profile مستقل می‌سازد و ترتیب طبیعی نام فایل‌ها شمارهٔ profile را تعیین می‌کند.
 - client نباید به `document.cookie` وابسته باشد. cookie material واحد باید هم برای header شبکه و هم برای ساخت Authorization استفاده شود.
 - تنظیمات runtime و Docker Compose از `.env` ریشه خوانده و به‌صورت environment به سرویس‌ها تزریق می‌شوند؛ فایل `.env` داخل کانتینر mount نمی‌شود.
+- قراردادها و opaqueهای staging، از جمله `WAA_API_KEY`، از `config/upstream.yaml` داخل image خوانده می‌شوند.
 - `AISTUDIO_AUTH_USER`، `AISTUDIO_AUTH_USER2` و موارد بعدی به‌ترتیب به فایل‌های cookie مربوط‌اند و مقدار پیش‌فرض مستقل هرکدام `0` است.
 - کانتینر نباید به مسیرهای شخصی میزبان مانند `Downloads` و `Pictures` دسترسی داشته باشد. فایل ورودی API فقط با `inlineData` دریافت می‌شود.
 

@@ -11,25 +11,33 @@ from .cookies import CookieJar
 from .errors import ClientError
 from .http import HttpClient
 from .models import RuntimeConfig
+from shared import upstream_value
 
-BOOTSTRAP_URL = "https://aistudio.google.com/prompts/new_chat"
+BOOTSTRAP_URL = upstream_value("aistudio", "bootstrap_url")
+ACCOUNT_BOOTSTRAP_URL = upstream_value("aistudio", "account_bootstrap_url")
+API_KEY_PROPERTY = upstream_value("runtime", "api_key_property")
+VISIT_ID_PROPERTY = upstream_value("runtime", "visit_id_property")
+ATTESTATION_PROPERTY = upstream_value("runtime", "attestation_enabled_property")
 
 
 def extract_runtime_config(document: str, *, auth_user: str = "0", diagnostics: dict | None = None) -> RuntimeConfig:
-    api_key = re.search(r'"WIu0Nc":"([^"\\]+)"', document)
-    raw_visit_id = re.search(r'"teM9xe":"([^"\\]+)"', document)
+    api_key = re.search(rf'"{re.escape(API_KEY_PROPERTY)}":"([^"\\]+)"', document)
+    raw_visit_id = re.search(rf'"{re.escape(VISIT_ID_PROPERTY)}":"([^"\\]+)"', document)
     if not api_key or not raw_visit_id:
         raise ClientError(
-            "Bootstrap response does not contain WIu0Nc and teM9xe runtime config",
+            "Bootstrap response does not contain configured runtime markers",
             phase="CONFIG",
             diagnostics={
                 **(diagnostics or {}), "body_bytes": len(document.encode()),
-                "has_api_key_marker": '"WIu0Nc"' in document,
-                "has_visit_id_marker": '"teM9xe"' in document,
+                "has_api_key_marker": f'"{API_KEY_PROPERTY}"' in document,
+                "has_visit_id_marker": f'"{VISIT_ID_PROPERTY}"' in document,
                 "looks_like_sign_in": bool(re.search(r"accounts\.google\.com|sign in", document, re.I)),
             },
         )
-    enabled = re.search(r'"UsvuEb"\s*:\s*(true|false|"true"|"false")', document)
+    enabled = re.search(
+        rf'"{re.escape(ATTESTATION_PROPERTY)}"\s*:\s*(true|false|"true"|"false")',
+        document,
+    )
     attestation_enabled = enabled is None or enabled.group(1).strip('"') == "true"
     visit_id = "v1_" + base64.urlsafe_b64encode(raw_visit_id.group(1).encode()).decode().rstrip("=")
     return RuntimeConfig(api_key.group(1), visit_id, str(auth_user), attestation_enabled)
@@ -82,7 +90,10 @@ def fetch_runtime_config(
             config.get("attestationEnabled", True),
         ), profile
 
-    bootstrap_url = url or (f"https://aistudio.google.com/u/{auth_user}/prompts/new_chat" if auth_user != "0" else BOOTSTRAP_URL)
+    bootstrap_url = url or (
+        ACCOUNT_BOOTSTRAP_URL.format(auth_user=auth_user)
+        if auth_user != "0" else BOOTSTRAP_URL
+    )
     response = http.request("GET", bootstrap_url, headers={"Cookie": cookies.header, **BOOTSTRAP_HEADERS}, retries=4, retryable=True)
     if response.ok:
         cookies.apply_response(response)

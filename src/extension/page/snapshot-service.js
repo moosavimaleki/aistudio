@@ -2,7 +2,7 @@
 
 (() => {
   // این سرویس فقط snapshot تازه می‌گیرد و دربارهٔ انتخاب provider تصمیم می‌گیرد.
-  function createSnapshotService(store, delay = defaultDelay) {
+  function createSnapshotService(store, delay = defaultDelay, config = globalThis.AISTUDIO_UPSTREAM_CONFIG) {
     async function create(digest, providerIndex) {
       const states = await store.waitForReady();
       if (Number.isInteger(providerIndex)) {
@@ -43,7 +43,7 @@
               return;
             }
             resolve(token);
-          }, [{ content: digest }, undefined, undefined, undefined]);
+          }, [{ [config.digestProperty]: digest }, undefined, undefined, undefined]);
         } catch (error) {
           reject(error);
         }

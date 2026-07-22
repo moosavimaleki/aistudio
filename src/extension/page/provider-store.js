@@ -2,15 +2,19 @@
 
 (() => {
   // این مخزن فقط lifecycle مربوط به provider بومی صفحه را نگهداری می‌کند.
-  function createProviderStore(root = globalThis, delay = defaultDelay) {
+  function createProviderStore(root = globalThis, delay = defaultDelay, config = root.AISTUDIO_UPSTREAM_CONFIG) {
     const states = [];
 
     function install() {
-      const namespace = root.botguard = root.botguard || {};
-      const existingEntry = namespace.a;
+      if (!config?.attestationNamespace || !config?.attestationEntrypoint) {
+        throw new Error("Attestation upstream config is missing");
+      }
+      const namespace = root[config.attestationNamespace] = root[config.attestationNamespace] || {};
+      const entrypoint = config.attestationEntrypoint;
+      const existingEntry = namespace[entrypoint];
       let runtimeEntry;
 
-      Object.defineProperty(namespace, "a", {
+      Object.defineProperty(namespace, entrypoint, {
         configurable: true,
         enumerable: true,
         get: () => runtimeEntry,
@@ -19,7 +23,7 @@
         },
       });
 
-      if (existingEntry !== undefined) namespace.a = existingEntry;
+      if (existingEntry !== undefined) namespace[entrypoint] = existingEntry;
     }
 
     function wrapEntry(entry) {

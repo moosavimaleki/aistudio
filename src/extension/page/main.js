@@ -2,8 +2,9 @@
 
 (() => {
   const protocol = globalThis.AIStudioBridgeProtocol;
-  const store = globalThis.AIStudioProviderStore.createProviderStore(globalThis);
-  const snapshots = globalThis.AIStudioSnapshotService.createSnapshotService(store);
+  const upstream = globalThis.AISTUDIO_UPSTREAM_CONFIG;
+  const store = globalThis.AIStudioProviderStore.createProviderStore(globalThis, undefined, upstream);
+  const snapshots = globalThis.AIStudioSnapshotService.createSnapshotService(store, undefined, upstream);
   store.install();
 
   // این listener درخواست content script را می‌گیرد و پاسخ را در همان origin برمی‌گرداند.
@@ -30,15 +31,16 @@
 
   function postResult(job, result) {
     // این داده‌ها از runtime همان صفحه خوانده می‌شوند تا client و Chrome یک هویت داشته باشند.
-    const data = window.WIZ_global_data || {};
+    const data = window[upstream.runtimeGlobal] || {};
     window.postMessage({
       source: protocol.responseSource,
       jobId: job.jobId,
       ...result,
       transportProfile: { "User-Agent": navigator.userAgent },
       runtimeConfig: {
-        apiKey: typeof data.WIu0Nc === "string" ? data.WIu0Nc : undefined,
-        rawVisitId: typeof data.teM9xe === "string" ? data.teM9xe : undefined,
+        apiKey: typeof data[upstream.apiKeyProperty] === "string" ? data[upstream.apiKeyProperty] : undefined,
+        rawVisitId: typeof data[upstream.visitIdProperty] === "string" ? data[upstream.visitIdProperty] : undefined,
+        attestationEnabled: data[upstream.attestationProperty] !== false,
         authUser: String(job.authUser ?? "0"),
       },
     }, location.origin);

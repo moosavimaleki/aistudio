@@ -16,7 +16,7 @@ test("page client forwards one job to the active AI Studio tab", async () => {
       },
     },
   };
-  const client = createPageClient(chromeApi, "TOKEN_JOB");
+  const client = createPageClient(chromeApi, "TOKEN_JOB", "https://aistudio.google.com/*");
 
   const result = await client.execute({ id: "j", digest: "a".repeat(64), authUser: "0" });
 

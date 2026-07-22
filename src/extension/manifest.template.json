@@ -6,20 +6,20 @@
   "permissions": ["tabs"],
   "host_permissions": [
     "http://127.0.0.1:3345/*",
-    "https://*.google.com/*"
+    "__AISTUDIO_GOOGLE_PERMISSION__"
   ],
   "background": {
     "service_worker": "background/entry.js"
   },
   "content_scripts": [
     {
-      "matches": ["https://aistudio.google.com/*"],
+      "matches": ["__AISTUDIO_MATCH__"],
       "js": ["dist/page.js"],
       "run_at": "document_start",
       "world": "MAIN"
     },
     {
-      "matches": ["https://aistudio.google.com/*"],
+      "matches": ["__AISTUDIO_MATCH__"],
       "js": ["dist/content.js"],
       "run_at": "document_start"
     }

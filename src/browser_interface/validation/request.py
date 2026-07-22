@@ -4,6 +4,13 @@ import hashlib
 import re
 from typing import Any
 
+from shared import upstream_value
+
+
+AISTUDIO_ORIGIN = upstream_value("aistudio", "origin")
+MAKER_SUITE_SERVICE = upstream_value("makersuite", "service")
+WAA_API_KEY = upstream_value("opaque", "waa_api_key")
+
 
 def normalize_headers(headers: Any) -> dict[str, str]:
     if not isinstance(headers, dict):
@@ -52,6 +59,8 @@ def validate_token_request(body: Any) -> tuple[dict[str, str], str]:
         raise ValueError("authorization is required")
     if not isinstance(waa_api_key, str) or not waa_api_key:
         raise ValueError("waaApiKey is required")
+    if waa_api_key != WAA_API_KEY:
+        raise ValueError("waaApiKey does not match upstream config")
     if not _is_generate_request(generate):
         raise ValueError("pending GenerateContent request context is required")
     if compute_content_digest(generate["payload"]) != digest:
@@ -65,7 +74,7 @@ def validate_token_request(body: Any) -> tuple[dict[str, str], str]:
     for name in required:
         if not headers.get(name):
             raise ValueError(f"GenerateContent context is missing {name}")
-    if headers["origin"] != "https://aistudio.google.com":
+    if headers["origin"] != AISTUDIO_ORIGIN:
         raise ValueError("GenerateContent origin does not match AI Studio")
     if headers["cookie"] != cookies:
         raise ValueError("GenerateContent cookie context differs from Token Factory cookies")
@@ -79,6 +88,6 @@ def _is_generate_request(value: Any) -> bool:
         isinstance(value, dict)
         and value.get("method") == "POST"
         and isinstance(value.get("url"), str)
-        and "MakerSuiteService/GenerateContent" in value["url"]
+        and f"{MAKER_SUITE_SERVICE}/GenerateContent" in value["url"]
         and isinstance(value.get("payload"), list)
     )

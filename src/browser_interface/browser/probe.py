@@ -3,6 +3,8 @@
 import copy
 from typing import Any
 
+from shared import upstream_value
+
 PROBE_SCRIPT = """async ({url, requestHeaders, requestPayload}) => {
   try {
     const response = await fetch(url, {
@@ -21,9 +23,10 @@ ALLOWED_HEADERS = {
     "accept", "accept-language", "authorization", "content-type",
     "x-browser-channel", "x-browser-copyright", "x-browser-validation",
     "x-browser-year", "x-client-data", "x-aistudio-visit-id",
-    "x-goog-api-key", "x-goog-authuser", "x-goog-ext-519733851-bin",
+    "x-goog-api-key", "x-goog-authuser",
     "x-goog-visitor-id", "x-user-agent",
 }
+ALLOWED_HEADERS.add(upstream_value("makersuite", "logging_context_header").lower())
 
 
 async def probe_generate(

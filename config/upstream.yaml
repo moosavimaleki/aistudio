@@ -23,3 +23,8 @@ attestation:
   namespace: "botguard"
   entrypoint: "a"
   digest_property: "content"
+
+opaque:
+  x_client_data: "CI+2yQEIo7bJAQipncoBCOHxygEIlqHLAQiHoM0BCM25zwEI5NCUMAiM1JQwCKTUlDAI9NaUMAio15QwGNvNlDAYj9SUMA=="
+  x_browser_validation: "hIGp5sTH9H7kN4yktLLzTt2XfKM="
+  waa_api_key: "AIzaSyBGb5fGAyC-pRcRU6MUHb__b_vKha71HRE"

@@ -6,6 +6,7 @@ src/runtime/
 src/chrome-profile/
 src/selenium/runtime/
 src/extension/dist/
+src/extension/manifest.json
 node_modules/
 aistudio.google.com-*
 .idea

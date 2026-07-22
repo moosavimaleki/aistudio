@@ -1,5 +1,6 @@
 fastapi>=0.115,<1
 playwright==1.45.0
+PyYAML>=6,<7
 requests>=2.32,<3
 redis>=5,<6
 uvicorn>=0.30,<1
