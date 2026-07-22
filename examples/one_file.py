@@ -1,0 +1,28 @@
+"""ارسال یک فایل محلی با Vertex ``inlineData``.
+
+سرویس آزمایشگاه base64 را decode می‌کند، فایل را در application folder همان
+profile آپلود می‌کند، سپس به‌جای inlineData یک fileData داخلی برای MakerSuite می‌سازد.
+"""
+
+from pathlib import Path
+
+from vertex_client import generate_content, inline_data, print_result, thinking
+
+
+file_path = Path(__file__).with_name("assets") / "meeting-notes.txt"
+response = generate_content(
+    "gemini-3.5-flash-lite",
+    {
+        "contents": [{
+            "role": "user",
+            "parts": [
+                # ترتیب partها مهم است و متن می‌تواند کنار فایل قرار بگیرد.
+                {"text": "این یادداشت جلسه را در سه bullet خلاصه کن."},
+                # اجرای دوبارهٔ این مثال، upload تازه انجام می‌دهد.
+                {"inlineData": inline_data(file_path, mime_type="text/plain")},
+            ],
+        }],
+        "generationConfig": {**thinking(), "temperature": 0.2, "maxOutputTokens": 250},
+    },
+)
+print_result(response)
