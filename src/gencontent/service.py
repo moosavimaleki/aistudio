@@ -57,7 +57,12 @@ class GenerateContentService:
                     prepared = replace(input, contents=resolve_inline_data(input.contents, tab))
                     result = tab.generate(prepared)
                 except Exception as error:
-                    if tab.state in {TabState.INVALID, TabState.FAILED}:
+                    # خطای auth ممکن است پیش از tab.generate و هنگام upload رخ
+                    # دهد؛ چنین tabای تعمیر یا refresh نمی‌شود و باید حذف شود.
+                    if (
+                        tab.state in {TabState.INVALID, TabState.FAILED}
+                        or invalidates_tab(error)
+                    ):
                         self.pool.discard(lease)
                     else:
                         self.pool.release(lease, dump_tab(tab))
