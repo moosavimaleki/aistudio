@@ -16,6 +16,7 @@ class TokenService:
         self.broker = broker
         self.browsers = browsers
         self._locks: dict[str, asyncio.Lock] = {}
+        self._activated_sessions: dict[str, str] = {}
 
     async def create(self, body: dict[str, Any]) -> dict[str, Any]:
         if body.get("attestationEnabled") is False:
@@ -37,7 +38,9 @@ class TokenService:
         assert_generate_fingerprint(headers, session)
 
         extension_result = await self._snapshot(body["digest"], auth_user, browser_id)
-        if os.getenv("TOKEN_FACTORY_SAME_BROWSER_PROBE") == "1":
+        session_id = browser.fingerprint or ""
+        needs_activation = self._activated_sessions.get(browser_id) != session_id
+        if os.getenv("TOKEN_FACTORY_SAME_BROWSER_PROBE") == "1" and needs_activation:
             provider_index = await self._select_provider(
                 body,
                 extension_result,
@@ -49,6 +52,7 @@ class TokenService:
                 browser_id,
                 provider_index,
             )
+            self._activated_sessions[browser_id] = session_id
 
         current = await browser.snapshot()
         assert_session_matches(body["cookies"], current["cookieRecords"])
@@ -93,7 +97,7 @@ class TokenService:
         body: dict[str, Any],
         extension_result: dict[str, Any],
         browser_id: str,
-    ) -> int | None:
+    ) -> int:
         candidates = extension_result.get("candidateTokens")
         if not isinstance(candidates, list) or not candidates:
             candidates = [extension_result["token"]]
@@ -114,4 +118,4 @@ class TokenService:
             )
             if probe.get("status") and probe["status"] not in (401, 403):
                 return index
-        return None
+        raise RuntimeError("No native provider was accepted by the same-browser probe")
