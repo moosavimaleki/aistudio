@@ -124,3 +124,7 @@ def _request(method: str, url: str, body: dict[str, Any], timeout: float) -> dic
     except HTTPError as error:
         detail = error.read().decode("utf-8", errors="replace")
         raise RuntimeError(f"GenerateContent returned HTTP {error.code}: {detail}") from error
+    except TimeoutError as error:
+        raise RuntimeError(
+            f"GenerateContent did not finish within {timeout:g} seconds"
+        ) from error

@@ -25,5 +25,7 @@ response = generate_content(
         }],
         "generationConfig": {**thinking(), "temperature": 0.2},
     },
+    # آپلود resumable و پردازش فایل صوتی بزرگ ممکن است چند دقیقه طول بکشد.
+    timeout=600,
 )
 print_result(response)
