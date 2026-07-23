@@ -3,7 +3,7 @@
 import asyncio
 
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 
 from aistudio_client.errors import ClientError
 
@@ -11,6 +11,7 @@ from gencontent.pool import PoolOverError
 from gencontent.dashboard import render_dashboard
 from .adapters import legacy_input, vertex_input, vertex_response
 from .models import GenerateContentBody, VertexGenerateContentBody
+from .sse import vertex_sse
 
 
 router = APIRouter()
@@ -81,6 +82,32 @@ async def vertex_generate_content(
     response = vertex_response(model, outcome)
     response["labMetadata"].update({"project": project, "location": location})
     return response
+
+
+@router.post(
+    "/v1/projects/{project}/locations/{location}/publishers/google/"
+    "models/{model}:streamGenerateContent"
+)
+async def vertex_stream_generate_content(
+    project: str,
+    location: str,
+    model: str,
+    body: VertexGenerateContentBody,
+    request: Request,
+):
+    # upstream آزمایشگاه فعلاً پاسخ را کامل جمع می‌کند؛ با این حال framing
+    # استاندارد SSE باعث می‌شود generate_content_stream رسمی قابل استفاده باشد.
+    outcome = await asyncio.to_thread(
+        request.app.state.service.generate,
+        vertex_input(model, body),
+    )
+    response = vertex_response(model, outcome)
+    response["labMetadata"].update({"project": project, "location": location})
+    return StreamingResponse(
+        vertex_sse(response),
+        media_type="text/event-stream",
+        headers={"X-Lab-Streaming-Mode": "buffered"},
+    )
 
 
 async def pool_over_handler(_request: Request, error: PoolOverError):

@@ -22,6 +22,23 @@ class BrowserProfilesTests(unittest.TestCase):
         self.assertEqual(selected.auth_user, "0")
         self.assertEqual(selected.slot, 1)
 
+    @patch("gencontent.profiles.requests.get")
+    def test_failed_profile_can_be_excluded(self, get):
+        response = Mock()
+        response.json.return_value = {
+            "browsers": [
+                {"browserId": "default", "authUser": "0", "connected": True, "ready": True},
+                {"browserId": "browser2", "authUser": "0", "connected": True, "ready": True},
+            ]
+        }
+        get.return_value = response
+
+        selected = BrowserProfiles(
+            "http://browser-interface:3345/get-token"
+        ).choose({"default"})
+
+        self.assertEqual(selected.browser_id, "browser2")
+
 
 if __name__ == "__main__":
     unittest.main()

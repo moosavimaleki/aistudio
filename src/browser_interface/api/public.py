@@ -5,7 +5,12 @@ from typing import Any
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
-from ..errors import BrowserIdentityMismatch, InvalidCookieSession, UnknownBrowser
+from ..errors import (
+    BrowserIdentityMismatch,
+    InvalidCookieSession,
+    NativeProviderRejected,
+    UnknownBrowser,
+)
 from ..events import emit
 
 router = APIRouter()
@@ -62,6 +67,8 @@ def _failure(event: str, error: Exception) -> JSONResponse:
     emit(event, message=str(error), code=type(error).__name__)
     if isinstance(error, InvalidCookieSession):
         status = 401
+    elif isinstance(error, NativeProviderRejected):
+        status = 403
     elif isinstance(error, (UnknownBrowser, BrowserIdentityMismatch)):
         status = 400
     else:

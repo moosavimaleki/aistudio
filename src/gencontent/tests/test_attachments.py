@@ -36,3 +36,17 @@ class AttachmentTests(unittest.TestCase):
         }}]}]
         with self.assertRaisesRegex(ValueError, "valid base64"):
             resolve_inline_data(contents, FakeTab())
+
+    def test_google_genai_urlsafe_base64_is_accepted(self):
+        contents = [{"role": "user", "parts": [{"inlineData": {
+            "data": "-_8=", "mimeType": "application/octet-stream",
+        }}]}]
+        tab = FakeTab()
+
+        resolved = resolve_inline_data(contents, tab)
+
+        self.assertEqual(tab.call, (b"\xfb\xff", "application/octet-stream", None))
+        self.assertEqual(
+            resolved[0]["parts"][0]["fileData"]["fileId"],
+            "drive-file-1",
+        )

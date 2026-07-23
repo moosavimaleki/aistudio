@@ -11,3 +11,7 @@ class UnknownBrowser(ValueError):
 
 class BrowserIdentityMismatch(ValueError):
     """Incoming cookies do not belong to the selected browser account."""
+
+
+class NativeProviderRejected(RuntimeError):
+    """The browser provider token was rejected by GenerateContent."""

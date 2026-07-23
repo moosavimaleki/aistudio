@@ -41,12 +41,13 @@ class GenerateContentService:
     def generate(self, input: GenerateInput) -> GenerateOutcome:
         # یک retry فقط برای tab خراب مجاز است. خطاهای model/quota باعث حذف tab
         # آماده نمی‌شوند و همان state برای درخواست بعدی به pool برمی‌گردد.
+        excluded_profiles: set[str] = set()
         for attempt in range(2):
             lease = self.pool.acquire()
             tab = None
             try:
                 try:
-                    tab = self._materialize(lease)
+                    tab = self._materialize(lease, excluded_profiles)
                 except Exception as error:
                     self.pool.discard(lease)
                     if attempt == 0:
@@ -63,6 +64,7 @@ class GenerateContentService:
                         tab.state in {TabState.INVALID, TabState.FAILED}
                         or invalidates_tab(error)
                     ):
+                        excluded_profiles.add(str(tab.settings.browser_id))
                         self.pool.discard(lease)
                     else:
                         self.pool.release(lease, dump_tab(tab))
@@ -83,9 +85,13 @@ class GenerateContentService:
                     tab.close()
         raise ClientError("Unable to replace invalid tab", phase="AUTH")
 
-    def _materialize(self, lease: TabLease) -> AIStudioTab:
+    def _materialize(
+        self,
+        lease: TabLease,
+        excluded_profiles: set[str],
+    ) -> AIStudioTab:
         if lease.is_new:
-            profile = self.profiles.choose()
+            profile = self.profiles.choose(excluded_profiles)
             settings = self.profile_settings.build(profile)
             return AIStudioTab(settings, tab_id=lease.tab_id).initialize()
 

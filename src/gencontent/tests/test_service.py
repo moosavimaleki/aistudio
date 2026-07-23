@@ -34,6 +34,10 @@ class GenerateContentServiceTests(unittest.TestCase):
         pool.discard.assert_called_once_with(leases[0])
         pool.release.assert_called_once_with(leases[1], {"state": "ready"})
         self.assertTrue(expired.closed)
+        self.assertEqual(
+            service._materialize.call_args_list[1].args[1],
+            {"default"},
+        )
 
 
 def _tab(name: str, *, result: GenerateResult | None = None):

@@ -26,6 +26,8 @@ def resolve_inline_data(contents: list[dict], tab) -> list[dict]:
 
 def _decode(value: str) -> bytes:
     try:
-        return base64.b64decode(value, validate=True)
+        # google-genai برای bytes از Base64 URL-safe استفاده می‌کند. altchars
+        # هر دو الفبای استاندارد و URL-safe را با validation سخت‌گیرانه می‌پذیرد.
+        return base64.b64decode(value, altchars=b"-_", validate=True)
     except (ValueError, binascii.Error) as error:
         raise ValueError("inlineData.data must be valid base64") from error

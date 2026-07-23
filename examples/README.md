@@ -24,10 +24,18 @@ python examples/multiple_files.py
 ## SDK رسمی `google-genai`
 
 مثال [google_genai_sdk.py](google_genai_sdk.py) همان endpoint را با SDK رسمی
-فراخوانی می‌کند:
+برای متن، stream و فایل فراخوانی می‌کند:
 
 ```bash
 python -m pip install google-genai
+python examples/google_genai_sdk.py
+```
+
+فایل پیش‌فرض `examples/assets/meeting-notes.txt` است. برای ارسال فایل دیگری:
+
+```bash
+AISTUDIO_GENAI_FILE=/path/to/audio.ogg \
+AISTUDIO_GENAI_FILE_PROMPT='متن کامل فایل را استخراج کن' \
 python examples/google_genai_sdk.py
 ```
 
@@ -37,6 +45,8 @@ SDK در حالت Vertex پیش از ارسال درخواست credential می�
 
 در قرارداد فعلی، `thinkingBudget` با SDK کار می‌کند. `thinkingLevel` رسمی SDK
 مانند `LOW` هنوز به enum عددی داخلی آزمایشگاه mapping نشده است.
+خروجی stream فعلاً buffered است؛ یعنی transport رسمی SSE است اما پاسخ upstream
+پس از کامل‌شدن generation در یک chunk تحویل داده می‌شود.
 
 برای تغییر آدرس سرویس یا بخش‌های مسیر Vertex:
 

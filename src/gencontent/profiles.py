@@ -36,8 +36,15 @@ class BrowserProfiles:
             ) from error
         return [_profile(item, slot) for slot, item in enumerate(items, start=1)]
 
-    def choose(self) -> BrowserProfile:
-        ready = [profile for profile in self.all() if profile.connected and profile.ready]
+    def choose(self, excluded: set[str] | None = None) -> BrowserProfile:
+        excluded = excluded or set()
+        ready = [
+            profile
+            for profile in self.all()
+            if profile.connected
+            and profile.ready
+            and profile.browser_id not in excluded
+        ]
         if not ready:
             raise ClientError("No ready Chrome profile is available", phase="CONFIG")
         return random.SystemRandom().choice(ready)

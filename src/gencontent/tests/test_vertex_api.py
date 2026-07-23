@@ -1,4 +1,5 @@
 import unittest
+import json
 from types import SimpleNamespace
 
 from pydantic import ValidationError
@@ -6,6 +7,7 @@ from pydantic import ValidationError
 from aistudio_client.models import GenerateResult
 from gencontent.api.adapters import vertex_input, vertex_response
 from gencontent.api.models import VertexGenerateContentBody
+from gencontent.api.sse import vertex_sse
 
 
 class VertexApiTests(unittest.TestCase):
@@ -84,6 +86,13 @@ class VertexApiTests(unittest.TestCase):
         self.assertEqual(response["candidates"][0]["content"]["role"], "model")
         self.assertEqual(response["candidates"][0]["content"]["parts"], [{"text": "پاسخ"}])
         self.assertEqual(response["labMetadata"]["browserId"], "browser2")
+
+    def test_sse_frame_is_accepted_by_google_genai_transport(self):
+        frame = next(iter(vertex_sse({"candidates": []})))
+
+        self.assertTrue(frame.startswith("data: "))
+        self.assertTrue(frame.endswith("\n\n"))
+        self.assertEqual(json.loads(frame[6:]), {"candidates": []})
 
 
 if __name__ == "__main__":

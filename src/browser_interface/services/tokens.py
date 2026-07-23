@@ -6,6 +6,7 @@ from typing import Any
 
 from ..broker import TokenBroker
 from ..browser.fleet import BrowserFleet
+from ..errors import NativeProviderRejected
 from ..events import emit
 from ..validation import validate_token_request
 from .guards import assert_generate_fingerprint, assert_session_matches
@@ -118,4 +119,6 @@ class TokenService:
             )
             if probe.get("status") and probe["status"] not in (401, 403):
                 return index
-        raise RuntimeError("No native provider was accepted by the same-browser probe")
+        raise NativeProviderRejected(
+            "No native provider was accepted by the same-browser probe"
+        )
