@@ -62,14 +62,24 @@ def inline_data(path: str | Path, *, mime_type: str | None = None) -> dict[str, 
 
 
 def text(response: dict[str, Any]) -> str:
-    """متن نخستین candidate را از پاسخ Vertex استخراج می‌کند.
+    """تمام متن نخستین candidate را از پاسخ Vertex استخراج می‌کند.
 
-    در صورت نیاز به تمام candidateها یا metadata، خود ``response`` را نگه دارید.
+    پاسخ stream ممکن است متن را در چند part برگرداند؛ ترتیب partها حفظ می‌شود
+    و partهای غیرمتنی، مانند thoughtSignature، در خروجی متن وارد نمی‌شوند.
     """
     try:
-        return response["candidates"][0]["content"]["parts"][0]["text"]
+        parts = response["candidates"][0]["content"]["parts"]
     except (KeyError, IndexError, TypeError) as error:
         raise ValueError(f"Response has no text candidate: {json.dumps(response, ensure_ascii=False)}") from error
+
+    texts = [
+        part["text"]
+        for part in parts
+        if isinstance(part, dict) and isinstance(part.get("text"), str)
+    ]
+    if not texts:
+        raise ValueError(f"Response has no text candidate: {json.dumps(response, ensure_ascii=False)}")
+    return "".join(texts)
 
 
 def print_result(response: dict[str, Any]) -> None:
