@@ -17,6 +17,18 @@ class BrowserProfile:
     connected: bool
     ready: bool
     warm_error: str | None
+    observed_auth_user: str | None = None
+    pending_jobs: int = 0
+    heartbeat_age_seconds: float | None = None
+    session_state: str = "UNKNOWN"
+    cookie_count: int = 0
+    auth_cookie_count: int = 0
+    cookie_revision: int = 0
+    cookie_expires_at: int | None = None
+    last_cookie_sync_at: int | None = None
+    last_ready_at: int | None = None
+    cookie_source_updated_at: int | None = None
+    cookie_source_current: bool = False
 
 
 class BrowserProfiles:
@@ -63,4 +75,16 @@ def _profile(item: dict, slot: int) -> BrowserProfile:
         connected=bool(item.get("connected")),
         ready=bool(item.get("ready")),
         warm_error=item.get("warmError"),
+        observed_auth_user=item.get("observedAuthUser"),
+        pending_jobs=int(item.get("pendingJobs", 0)),
+        heartbeat_age_seconds=item.get("heartbeatAgeSeconds"),
+        session_state=str(item.get("sessionState", "UNKNOWN")),
+        cookie_count=int(item.get("cookieCount", 0)),
+        auth_cookie_count=int(item.get("authCookieCount", 0)),
+        cookie_revision=int(item.get("cookieRevision", 0)),
+        cookie_expires_at=item.get("cookieExpiresAt"),
+        last_cookie_sync_at=item.get("lastCookieSyncAt"),
+        last_ready_at=item.get("lastReadyAt"),
+        cookie_source_updated_at=item.get("cookieSourceUpdatedAt"),
+        cookie_source_current=bool(item.get("cookieSourceCurrent")),
     )

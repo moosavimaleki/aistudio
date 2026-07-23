@@ -33,6 +33,7 @@ class GenerateInput:
 class GenerateResult:
     final_text: str = ""
     chunks: list[Any] = field(default_factory=list)
+    model_parts: list[dict[str, Any]] = field(default_factory=list)
     finish_reason: Any = None
     usage: Any = None
     conversation_metadata: Any = None

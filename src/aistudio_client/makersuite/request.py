@@ -5,6 +5,7 @@ from typing import Any
 from ..models import GenerateInput
 from .content import encode_contents, encode_system_instruction
 from .generation import encode_generation_config
+from .tools import encode_tools
 
 
 DEFAULT_SAFETY_SETTINGS = [
@@ -28,7 +29,7 @@ def build_generate_content_payload(input: GenerateInput) -> list:
     )
     payload[3] = encode_generation_config(input.generation_config)
     payload[5] = encode_system_instruction(input.system_instruction)
-    payload[6] = input.tools
+    payload[6] = encode_tools(input.tools)
     payload[10] = 1
 
     if input.continuation_token is not None:

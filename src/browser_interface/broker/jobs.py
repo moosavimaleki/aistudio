@@ -81,8 +81,10 @@ class TokenBroker:
 
     def _browser_health(self, browser_id: str) -> dict[str, Any]:
         last_heartbeat = self._heartbeats.get(browser_id, 0)
+        heartbeat_age = time.monotonic() - last_heartbeat if last_heartbeat else None
         pending = sum(job.browser_id == browser_id for job in self._jobs.values())
         return {
-            "connected": time.monotonic() - last_heartbeat < 5,
+            "connected": heartbeat_age is not None and heartbeat_age < 5,
             "pendingJobs": pending,
+            "heartbeatAgeSeconds": round(heartbeat_age, 3) if heartbeat_age is not None else None,
         }

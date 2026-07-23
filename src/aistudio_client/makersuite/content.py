@@ -3,6 +3,8 @@
 from copy import deepcopy
 from typing import Any
 
+from .parts import encode_named_part
+
 
 def encode_contents(contents: list[dict[str, Any]]) -> list:
     if not contents:
@@ -30,16 +32,7 @@ def encode_part(part: Any) -> list:
     if not isinstance(part, dict):
         raise ValueError("Part must be text, an object, or a raw positional list")
 
-    choices = [name for name in ("text", "fileData", "raw") if part.get(name) is not None]
-    if len(choices) != 1:
-        raise ValueError("Part must set exactly one of text, fileData, or raw")
-    if choices[0] == "text":
-        return _text_part(part["text"])
-    if choices[0] == "raw":
-        if not isinstance(part["raw"], list):
-            raise ValueError("Part raw value must be a positional list")
-        return deepcopy(part["raw"])
-    return _file_part(part["fileData"])
+    return encode_named_part(part)
 
 
 def encode_system_instruction(value: str | dict[str, Any] | None) -> list | None:
@@ -55,12 +48,3 @@ def _text_part(value: Any) -> list:
     if not isinstance(value, str) or not value.strip():
         raise ValueError("Text parts must be non-empty strings")
     return [None, value]
-
-
-def _file_part(value: Any) -> list:
-    if not isinstance(value, dict):
-        raise ValueError("fileData must be an object")
-    file_id = value.get("fileId")
-    if not isinstance(file_id, str) or not file_id.strip():
-        raise ValueError("fileData.fileId is required before payload encoding")
-    return [None, None, None, None, None, [file_id]]

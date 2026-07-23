@@ -50,3 +50,16 @@ class AttachmentTests(unittest.TestCase):
             resolved[0]["parts"][0]["fileData"]["fileId"],
             "drive-file-1",
         )
+
+    def test_video_metadata_survives_inline_upload(self):
+        contents = [{"role": "user", "parts": [{"inlineData": {
+            "data": base64.b64encode(b"video").decode(),
+            "mimeType": "video/mp4",
+        }, "videoMetadata": {"startOffset": "1s"}}]}]
+
+        resolved = resolve_inline_data(contents, FakeTab())
+
+        self.assertEqual(
+            resolved[0]["parts"][0]["videoMetadata"],
+            {"startOffset": "1s"},
+        )

@@ -31,10 +31,11 @@ def vertex_input(model: str, body: VertexGenerateContentBody) -> GenerateInput:
 
 
 def vertex_response(model: str, outcome) -> dict:
+    parts = outcome.result.model_parts or [{"text": outcome.result.final_text}]
     candidate = {
         "content": {
             "role": "model",
-            "parts": [{"text": outcome.result.final_text}],
+            "parts": parts,
         }
     }
     if outcome.result.finish_reason is not None:

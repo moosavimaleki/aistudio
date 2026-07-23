@@ -12,6 +12,7 @@ COPY src/shared ./shared
 COPY src/extension ./extension
 RUN /opt/venv/bin/python /app/extension/build.py
 COPY src/selenium ./selenium
+COPY src/lab_metrics ./lab_metrics
 COPY src/browser_interface ./browser_interface
 COPY src/aistudio_client ./aistudio_client
 COPY src/browser_interface/run.sh /opt/bin/run-browser-interface

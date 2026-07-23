@@ -39,12 +39,19 @@ AISTUDIO_GENAI_FILE_PROMPT='متن کامل فایل را استخراج کن' \
 python examples/google_genai_sdk.py
 ```
 
+مدل مثال نیز قابل تغییر است:
+
+```bash
+AISTUDIO_MODEL=gemini-3.5-flash-lite python examples/google_genai_sdk.py
+```
+
 SDK در حالت Vertex پیش از ارسال درخواست credential می‌خواهد. مثال یک
 `LocalLabCredentials` حداقلی دارد که **فقط** برای gateway محلی staging معتبر
 است؛ این credential Google نیست و نباید به هیچ محیط دیگری منتقل شود.
 
-در قرارداد فعلی، `thinkingBudget` با SDK کار می‌کند. `thinkingLevel` رسمی SDK
-مانند `LOW` هنوز به enum عددی داخلی آزمایشگاه mapping نشده است.
+هر دو حالت `thinkingBudget` و `thinkingLevel` رسمی SDK پشتیبانی می‌شوند، اما
+نباید هم‌زمان ارسال شوند. `candidateCount` نیز به field واقعی upstream منتقل
+می‌شود؛ مدل `gemini-3.5-flash-lite` فعلاً فقط مقدار `1` را قبول می‌کند.
 خروجی stream فعلاً buffered است؛ یعنی transport رسمی SSE است اما پاسخ upstream
 پس از کامل‌شدن generation در یک chunk تحویل داده می‌شود.
 
@@ -74,6 +81,10 @@ python examples/reuse_uploaded_file.py
 ## محدودیت‌های قرارداد فعلی
 
 - `generationConfig.thinkingConfig` اجباری است؛ همهٔ مثال‌ها آن را دارند.
-- `candidateCount` در wire format فعلی mapping تأییدشده ندارد و رد می‌شود.
+- `candidateCount` پشتیبانی می‌شود، ولی محدودیت تعداد candidate به مدل وابسته است.
+- `functionCall`، `functionResponse`، `executableCode`،
+  `codeExecutionResult` و `videoMetadata` به fieldهای MakerSuite تبدیل می‌شوند.
+- FunctionResponse در مدل‌های Gemini 3 باید thought signature پاسخ قبلی مدل را
+  همراه history حفظ کند؛ signature ساختگی معتبر نیست.
 - `fileData.fileId` فقط در همان application folder/profile معتبری که فایل در آن ایجاد شده استفاده شود.
 - مدل در URL به‌صورت `gemini-…` نوشته می‌شود؛ service آن را به `models/gemini-…` تبدیل می‌کند.

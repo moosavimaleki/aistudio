@@ -1,30 +1,57 @@
 """HTTP routes and stable error responses."""
 
 import asyncio
+from pathlib import Path
 
-from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi import APIRouter, Query, Request
+from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 
 from aistudio_client.errors import ClientError
 
 from gencontent.pool import PoolOverError
 from gencontent.dashboard import render_dashboard
+from gencontent.dashboard_stats import dashboard_snapshot
+from lab_metrics import MetricsReader
 from .adapters import legacy_input, vertex_input, vertex_response
 from .models import GenerateContentBody, VertexGenerateContentBody
 from .sse import vertex_sse
 
 
 router = APIRouter()
+ASSET_DIR = Path(__file__).resolve().parents[1] / "dashboard_assets"
 
 
 @router.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
-    service = request.app.state.service
-    pool, profiles = await asyncio.gather(
+    return HTMLResponse(render_dashboard())
+
+
+@router.get("/dashboard/data")
+async def dashboard_data(
+    request: Request,
+    window: int = Query(60, ge=1, le=2880),
+):
+    metric_window, pool, profiles = await asyncio.gather(
+        asyncio.to_thread(MetricsReader(request.app.state.metrics).read, window),
         asyncio.to_thread(request.app.state.pool.snapshot),
-        asyncio.to_thread(service.profiles.all),
+        asyncio.to_thread(request.app.state.service.profiles.all),
     )
-    return HTMLResponse(render_dashboard(pool, profiles))
+    return dashboard_snapshot(metric_window, window, pool, profiles)
+
+
+@router.get("/dashboard/assets/{name}")
+async def dashboard_asset(name: str):
+    assets = {
+        "style.css": "text/css; charset=utf-8",
+        "app.js": "application/javascript; charset=utf-8",
+    }
+    if name not in assets:
+        return Response(status_code=404)
+    return Response(
+        (ASSET_DIR / name).read_text(encoding="utf-8"),
+        media_type=assets[name],
+        headers={"Cache-Control": "no-cache"},
+    )
 
 
 @router.get("/health")

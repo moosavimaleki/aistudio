@@ -242,11 +242,28 @@ config[18] = seed
 
 نکات اجرایی:
 
-- candidate count mapping داخلی تأیید نشده است؛ implementation آن را reject می‌کند.
+- `candidateCount` در `config[0]` قرار می‌گیرد؛ محدودیت تعداد واقعی model-dependent است.
 - `responseSchema` باید به schema positional تبدیل شود؛ JSON Schema خام قابل ارسال نیست.
-- thinking level string به enum داخلی نگاشت قطعی عمومی ندارد؛ implementation فقط `levelEnum` عددی می‌پذیرد.
+- thinking level رسمی به enum داخلی نگاشت می‌شود:
+  `LOW=1`، `MEDIUM=2`، `HIGH=3` و `MINIMAL=4`.
 - budget و level را هم‌زمان نفرستید.
 - قابلیت واقعی هر feature model-dependent است؛ schema معتبر لزوماً به معنی مدل پشتیبان نیست.
+
+Partهای تکمیلی تأییدشده:
+
+```text
+field 8  = executableCode
+field 9  = codeExecutionResult
+field 11 = functionCall
+field 12 = functionResponse
+field 13 = thought
+field 15 = thoughtSignature
+field 16 = videoMetadata
+```
+
+در Gemini 3، FunctionResponse باید history اصلی FunctionCall و
+`thoughtSignature` تولیدشده توسط مدل را حفظ کند. ساخت signature جدید در client
+معتبر نیست.
 
 ## مرحلهٔ 7: digest و Token Factory
 

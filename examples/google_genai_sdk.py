@@ -49,6 +49,7 @@ class LocalLabCredentials(Credentials):
 base_url = os.environ.get("AISTUDIO_GENCONTENT_URL", "http://127.0.0.1:3346")
 project = os.environ.get("AISTUDIO_VERTEX_PROJECT", "lab")
 location = os.environ.get("AISTUDIO_VERTEX_LOCATION", "us-central1")
+model = os.environ.get("AISTUDIO_MODEL", "gemini-3.1-pro-preview")
 
 # vertexai=True باعث می‌شود SDK مسیر استاندارد Vertex را بسازد:
 # /v1/projects/{project}/locations/{location}/publishers/google/models/...:generateContent
@@ -62,14 +63,15 @@ client = genai.Client(
 # gemini-3.1-pro-preview
 # gemini-3.5-flash-lite
 response = client.models.generate_content(
-    model="gemini-3.1-pro-preview",
+    model=model,
     contents="سلام؛ سمنان را در یک جمله معرفی کن.",
     config=types.GenerateContentConfig(
         temperature=0.2,
-        max_output_tokens=100,
-        # API فعلی آزمایشگاه thinkingBudget را با SDK رسمی می‌پذیرد.
-        # thinkingLevel استاندارد (LOW/MEDIUM/...) هنوز به levelEnum داخلی map نشده است.
-        thinking_config=types.ThinkingConfig(thinking_budget=64),
+        max_output_tokens=512,
+        candidate_count=1,
+        thinking_config=types.ThinkingConfig(
+            thinking_level=types.ThinkingLevel.LOW,
+        ),
     ),
 )
 
@@ -78,12 +80,14 @@ print(response.text)
 # همان قرارداد با متد stream رسمی SDK نیز قابل فراخوانی است. upstream
 # آزمایشگاه فعلاً پاسخ را یک‌جا جمع می‌کند، بنابراین یک chunk نهایی می‌رسد.
 stream = client.models.generate_content_stream(
-    model="gemini-3.1-pro-preview",
+    model=model,
     contents="فقط بنویس: جریان سازگار است",
     config=types.GenerateContentConfig(
         temperature=0,
-        max_output_tokens=30,
-        thinking_config=types.ThinkingConfig(thinking_budget=32),
+        max_output_tokens=256,
+        thinking_config=types.ThinkingConfig(
+            thinking_level=types.ThinkingLevel.LOW,
+        ),
     ),
 )
 print("".join(chunk.text or "" for chunk in stream))
@@ -95,7 +99,7 @@ file_path = Path(os.environ.get("AISTUDIO_GENAI_FILE", default_file))
 mime_type = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
 
 file_response = client.models.generate_content(
-    model="gemini-3.1-pro-preview",
+    model=model,
     contents=[
         types.Content(
             role="user",
@@ -115,8 +119,8 @@ file_response = client.models.generate_content(
     ],
     config=types.GenerateContentConfig(
         temperature=0,
-        max_output_tokens=100,
-        thinking_config=types.ThinkingConfig(thinking_budget=32),
+        max_output_tokens=512,
+        thinking_config=types.ThinkingConfig(thinking_budget=64),
     ),
 )
 print(file_response.text)

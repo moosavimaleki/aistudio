@@ -84,14 +84,7 @@ class BrowserFleet:
 
     def status(self) -> list[dict]:
         return [
-            {
-                "browserId": browser_id,
-                "authUser": slot.spec.auth_user,
-                "observedAuthUser": slot.session.observed_auth_user,
-                "ready": slot.session.ready,
-                **self.broker.health(browser_id),
-                "warmError": slot.warm_error,
-            }
+            _slot_status(browser_id, slot, self.broker.health(browser_id))
             for browser_id, slot in self._slots.items()
         ]
 
@@ -120,3 +113,37 @@ class BrowserFleet:
                 browserId=slot.spec.browser_id,
                 message=str(error),
             )
+
+
+def _slot_status(browser_id: str, slot: BrowserSlot, health: dict) -> dict:
+    return {
+        "browserId": browser_id,
+        "authUser": slot.spec.auth_user,
+        "observedAuthUser": slot.session.observed_auth_user,
+        "ready": slot.session.ready,
+        **health,
+        "warmError": slot.warm_error,
+        "sessionState": _session_state(slot, health["connected"]),
+        **slot.session.diagnostics.snapshot(),
+        "cookieSourceUpdatedAt": _source_updated_at(slot.spec.cookie_file),
+        "cookieSourceCurrent": slot.session.cookie_source_current,
+    }
+
+
+def _session_state(slot: BrowserSlot, connected: bool) -> str:
+    if slot.session.ready:
+        return "READY"
+    if slot.warm_error and (
+        "sign-in" in slot.warm_error.lower()
+        or "cookie" in slot.warm_error.lower()
+    ):
+        return "INVALID"
+    if connected:
+        return "WARMING"
+    return "DISCONNECTED"
+
+
+def _source_updated_at(path) -> int | None:
+    if not path or not path.is_file():
+        return None
+    return int(path.stat().st_mtime * 1000)

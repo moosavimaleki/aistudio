@@ -55,15 +55,63 @@ class VertexApiTests(unittest.TestCase):
             "کوتاه جواب بده",
         )
 
-    def test_candidate_count_is_rejected_at_http_contract(self):
-        with self.assertRaises(ValidationError):
-            VertexGenerateContentBody.model_validate({
-                "contents": [{"role": "user", "parts": [{"text": "سلام"}]}],
-                "generationConfig": {
-                    "candidateCount": 2,
-                    "thinkingConfig": {"levelEnum": 4},
+    def test_candidate_count_and_official_thinking_level_are_accepted(self):
+        body = VertexGenerateContentBody.model_validate({
+            "contents": [{"role": "user", "parts": [{"text": "سلام"}]}],
+            "generationConfig": {
+                "candidateCount": 2,
+                "thinkingConfig": {"thinkingLevel": "HIGH"},
+            },
+        })
+
+        request = vertex_input("gemini-test", body)
+
+        self.assertEqual(request.generation_config["candidateCount"], 2)
+        self.assertEqual(
+            request.generation_config["thinkingConfig"]["thinkingLevel"],
+            "HIGH",
+        )
+
+    def test_function_code_and_video_parts_are_accepted(self):
+        body = VertexGenerateContentBody.model_validate({
+            "contents": [{"role": "model", "parts": [
+                {"functionCall": {
+                    "name": "lookup",
+                    "args": {"id": 7},
+                    "id": "call-7",
+                }},
+                {"executableCode": {
+                    "language": "PYTHON",
+                    "code": "print(7)",
+                }},
+                {"codeExecutionResult": {
+                    "outcome": "OUTCOME_OK",
+                    "output": "7",
+                }},
+            ]}, {"role": "user", "parts": [
+                {"functionResponse": {
+                    "name": "lookup",
+                    "response": {"value": "seven"},
+                    "id": "call-7",
+                }},
+                {
+                    "fileData": {"fileId": "video-7"},
+                    "videoMetadata": {"startOffset": "1s", "fps": 24},
                 },
-            })
+            ]}],
+            "generationConfig": {"thinkingConfig": {"thinkingLevel": "LOW"}},
+        })
+
+        request = vertex_input("gemini-test", body)
+
+        self.assertEqual(
+            request.contents[0]["parts"][0]["functionCall"]["name"],
+            "lookup",
+        )
+        self.assertEqual(
+            request.contents[1]["parts"][1]["videoMetadata"]["fps"],
+            24,
+        )
 
     def test_thinking_mode_is_required(self):
         with self.assertRaises(ValidationError):

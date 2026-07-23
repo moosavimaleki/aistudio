@@ -19,7 +19,7 @@ def resolve_inline_data(contents: list[dict], tab) -> list[dict]:
                 mime_type=inline["mimeType"],
                 name=inline.get("displayName"),
             )
-            part.clear()
+            part.pop("inlineData")
             part["fileData"] = {"fileId": file_id, "mimeType": inline["mimeType"]}
     return resolved
 

@@ -7,6 +7,7 @@ from collections.abc import Callable
 from typing import Any
 
 from .errors import ClientError
+from .makersuite.decode import decode_part
 from .models import GenerateResult
 
 
@@ -31,6 +32,26 @@ def visible_text_from_chunk(chunk: Any) -> str:
     return text
 
 
+def model_parts_from_chunk(chunk: Any) -> list[dict[str, Any]]:
+    if not isinstance(chunk, list) or not chunk or not isinstance(chunk[0], list):
+        return []
+    decoded = []
+    for frame in chunk[0]:
+        try:
+            content = frame[0][0][0]
+            if not isinstance(content, list) or content[1] != "model":
+                continue
+            decoded.extend(
+                value
+                for part in content[0]
+                if isinstance(part, list)
+                if (value := decode_part(part)) is not None
+            )
+        except (IndexError, TypeError):
+            continue
+    return decoded
+
+
 def collect_generate_result(response, on_chunk: Callable[[Any], None] | None = None) -> GenerateResult:
     result = GenerateResult()
     for raw_line in response.iter_lines(decode_unicode=True):
@@ -42,6 +63,7 @@ def collect_generate_result(response, on_chunk: Callable[[Any], None] | None = N
             chunk = raw_line
         result.chunks.append(chunk)
         result.final_text += visible_text_from_chunk(chunk)
+        result.model_parts.extend(model_parts_from_chunk(chunk))
         if isinstance(chunk, dict):
             result.finish_reason = chunk.get("finishReason", result.finish_reason)
             result.usage = chunk.get("usage", result.usage)

@@ -15,6 +15,7 @@ from .connection import connect_chrome
 from .cookies import AUTH_COOKIE_NAMES, apply_and_verify
 from .cookies import google_cookie_records, parse_google_cookies
 from .cookies import session_fingerprint
+from .diagnostics import SessionDiagnostics
 from .lifecycle import prime_native_generate
 from .navigation import navigate_to_account
 from .observer import RpcObserver
@@ -46,6 +47,7 @@ class BrowserSession:
         self.auth_user: str | None = None
         self.rpc = RpcObserver()
         self.current_cookie_header: str | None = None
+        self.diagnostics = SessionDiagnostics()
         self._snapshot_values: dict[str, str] = {}
         self._lock = asyncio.Lock()
 
@@ -61,6 +63,10 @@ class BrowserSession:
     @property
     def observed_auth_user(self) -> str | None:
         return normalize_headers(self.rpc.headers).get("x-goog-authuser")
+
+    @property
+    def cookie_source_current(self) -> bool:
+        return self._revision_matches()
 
     async def prepare(self, cookie_header: str, auth_user: str = "0") -> dict[str, Any]:
         async with self._lock:
@@ -103,12 +109,14 @@ class BrowserSession:
             cookieCount=len(await self.context.cookies()),
             url=urlparse(self.page.url).path,
         )
+        self.diagnostics.record_ready()
         return await self.snapshot()
 
     async def snapshot(self) -> dict[str, Any]:
         if not self.context or not self.runtime_config or not self.transport_profile:
             raise RuntimeError("Container browser session is not ready")
         cookies = await self.context.cookies()
+        cookie_changed = self.diagnostics.record_snapshot(cookies)
         records = google_cookie_records(cookies)
         if not any(record["name"] in AUTH_COOKIE_NAMES for record in records):
             raise RuntimeError("Refusing to persist a Chrome session without auth cookies")
@@ -130,6 +138,8 @@ class BrowserSession:
                 browserId=self.browser_id,
                 cookieFile=self.cookie_file.name,
                 cookieCount=count,
+                cookieRevision=self.diagnostics.cookie_revision,
+                cookieChanged=cookie_changed,
             )
             if self.profile_directory:
                 save_revision(self.cookie_file, self.profile_directory)

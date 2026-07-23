@@ -9,14 +9,13 @@ DEFAULT_MAX_OUTPUT_TOKENS = 65536
 DEFAULT_TEMPERATURE = 1
 DEFAULT_TOP_P = 0.95
 DEFAULT_TOP_K = 64
+THINKING_LEVEL_ENUM = {"LOW": 1, "MEDIUM": 2, "HIGH": 3, "MINIMAL": 4}
 
 
 def encode_generation_config(config: dict[str, Any]) -> list:
     config = config or {}
-    if _value(config, "candidateCount", "candidate_count") is not None:
-        raise ValueError("candidateCount has no confirmed MakerSuite field mapping")
-
     encoded = [None] * 19
+    encoded[0] = _value(config, "candidateCount", "candidate_count")
     encoded[1] = _value(config, "stopSequences", "stop_sequences")
     encoded[3] = _value(
         config, "maxOutputTokens", "max_output_tokens", default=DEFAULT_MAX_OUTPUT_TOKENS,
@@ -52,8 +51,13 @@ def _thinking_config(value: Any) -> list:
         raise ValueError("thinkingConfig cannot set budget and level together")
     if budget is None and level is None:
         raise ValueError("thinkingConfig must set thinkingBudget or levelEnum")
+    if isinstance(level, str):
+        try:
+            level = THINKING_LEVEL_ENUM[level.upper()]
+        except KeyError:
+            raise ValueError(f"Unsupported thinkingLevel: {level}") from None
     if level is not None and not isinstance(level, int):
-        raise ValueError("thinkingLevel string mapping is not confirmed; use levelEnum")
+        raise ValueError("thinkingLevel must be a known string or numeric levelEnum")
     include = _value(value, "includeThoughts", "include_thoughts", default=False)
     return [bool(include), budget, None, level]
 
