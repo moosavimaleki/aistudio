@@ -28,8 +28,8 @@ COPY --from=go-builder /out/gencontent /app/bin/gencontent
 COPY --from=extension-builder /build/extension ./extension
 COPY src/selenium/entrypoint.sh ./selenium/entrypoint.sh
 COPY src/selenium/scripts ./selenium/scripts
-COPY src/browser_interface/run.sh /opt/bin/run-browser-interface
-COPY src/gencontent/run.sh /opt/bin/run-gencontent
+COPY scripts/run-browser-interface /opt/bin/run-browser-interface
+COPY scripts/run-gencontent /opt/bin/run-gencontent
 
 RUN chmod +x /app/selenium/entrypoint.sh /app/selenium/scripts/*.sh \
         /opt/bin/run-browser-interface /opt/bin/run-gencontent \
