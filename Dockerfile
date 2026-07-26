@@ -19,7 +19,8 @@ FROM ${CHROME_BASE_IMAGE}
 
 ARG VERSION=dev
 LABEL org.opencontainers.image.title="AI Studio API" \
-      org.opencontainers.image.description="Go gateway backed by container Chrome for the AI Studio staging lab" \
+      org.opencontainers.image.description="STAGING LAB ONLY: Go gateway backed by container Chrome; never use in production or outside a controlled staging lab" \
+      org.opencontainers.image.documentation="https://hub.docker.com/r/moosavimaleki/aistudio-api" \
       org.opencontainers.image.version="${VERSION}"
 
 USER root

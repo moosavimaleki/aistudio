@@ -11,28 +11,8 @@ services:
       - "127.0.0.1:5900:5900"
       - "127.0.0.1:7900:7900"
     env_file:
+      - ./config/container.env
       - ./.env
-    environment:
-      PORT: "3345"
-      GENCONTENT_PORT: "8000"
-      FACTORY_ORIGIN: "http://127.0.0.1:3345"
-      TOKEN_FACTORY_URL: "http://127.0.0.1:3345/get-token"
-      LAB_PROXY_URL: "http://host.docker.internal:10808"
-      AISTUDIO_PROXY_URL: "http://host.docker.internal:10808"
-      REDIS_URL: "redis://redis:6379/0"
-      AISTUDIO_COOKIE_DIR: "/app/cookies"
-      CHROME_EXECUTABLE: "/usr/bin/google-chrome"
-      CHROME_RUNTIME_DIR: "/app/browser-profiles"
-      EXTENSION_SOURCE_DIR: "/app/extension"
-      AISTUDIO_RUNTIME_DIR: "/app/runtime/state"
-      CHROME_CDP_BASE_PORT: "${CHROME_CDP_BASE_PORT:-9223}"
-      AISTUDIO_DEFAULT_BROWSER_ID: "${AISTUDIO_DEFAULT_BROWSER_ID:-}"
-      EXPECTED_BROWSER_MAJOR: "${EXPECTED_BROWSER_MAJOR:-}"
-      TOKEN_FACTORY_SAME_BROWSER_PROBE: "${TOKEN_FACTORY_SAME_BROWSER_PROBE:-1}"
-      AISTUDIO_PAGE_READY_TIMEOUT_MS: "${AISTUDIO_PAGE_READY_TIMEOUT_MS:-60000}"
-      TAB_POOL_MAX: "${TAB_POOL_MAX:-100}"
-      TAB_POOL_WAIT_SECONDS: "${TAB_POOL_WAIT_SECONDS:-5}"
-      TAB_POOL_LEASE_SECONDS: "${TAB_POOL_LEASE_SECONDS:-600}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
