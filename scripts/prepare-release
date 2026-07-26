@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  echo "Usage: $0 <dockerhub-user/image> <version> [--load|--push]" >&2
+}
+
+image="${1:-}"
+version="${2:-}"
+mode="${3:---load}"
+
+if [[ ! "$image" =~ ^[a-z0-9._-]+/[a-z0-9._-]+$ ]]; then
+  usage
+  exit 2
+fi
+if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][a-zA-Z0-9._-]+)?$ ]]; then
+  usage
+  exit 2
+fi
+if [[ "$mode" != "--load" && "$mode" != "--push" ]]; then
+  usage
+  exit 2
+fi
+
+project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+platform="${DOCKER_PLATFORM:-linux/amd64}"
+
+docker buildx build \
+  --platform "$platform" \
+  --build-arg "VERSION=$version" \
+  --tag "$image:$version" \
+  --tag "$image:latest" \
+  "$mode" \
+  "$project_dir"
+
+echo "Prepared $image:$version and $image:latest ($mode)"

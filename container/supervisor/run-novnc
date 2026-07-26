@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+/app/supervisor/wait-display
+exec /opt/venv/bin/websockify --web=/opt/bin/noVNC 7900 127.0.0.1:5900

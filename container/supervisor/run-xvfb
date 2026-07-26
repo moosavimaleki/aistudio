@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+sudo mkdir -p /tmp/.X11-unix
+sudo chmod 1777 /tmp/.X11-unix
+rm -f /tmp/.X99-lock /tmp/.X11-unix/X99
+exec Xvfb :99 -screen 0 1280x900x24 -nolisten tcp -ac

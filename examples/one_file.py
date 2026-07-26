@@ -19,8 +19,7 @@ response = generate_content(
                 # ترتیب partها مهم است و متن می‌تواند کنار فایل قرار بگیرد.
                 {"text": "متن کامل این فایل رو استخراج کن"},
                 # اجرای دوبارهٔ این مثال، upload تازه انجام می‌دهد.
-                # {"inlineData": inline_data("/home/h-mousavi/Downloads/s.mp3")},
-                {"inlineData": inline_data("/home/h-mousavi/Downloads/l.mp3")},
+                {"inlineData": inline_data(file_path, mime_type="text/plain")},
             ],
         }],
         "generationConfig": {**thinking(), "temperature": 0.2},

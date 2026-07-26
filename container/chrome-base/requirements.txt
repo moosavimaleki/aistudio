@@ -1,0 +1,5 @@
+pyautogui
+Pillow
+opencv-python-headless
+pyperclip
+requests

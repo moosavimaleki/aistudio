@@ -1,5 +1,5 @@
-src/selenium/runtime
-src/extension/dist
+container/runtime/state
+assets/extension/dist
 __pycache__
 *.py[cod]
 .git

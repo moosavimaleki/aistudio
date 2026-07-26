@@ -7,7 +7,8 @@
 دو نوع شاهد در این سند وجود دارد:
 
 - **bundle/capture:** رفتار UI AI Studio و serializer داخلی؛
-- **implementation:** رفتار تأییدشده در `src/aistudio_client` و `src/browser_interface`.
+- **implementation:** رفتار تأییدشده در `internal/aistudio`،
+  `internal/browserinterface` و `internal/gencontent`.
 
 در مواردی که schema یا capability یک مدل قطعی نیست، client باید fail closed کند یا capture/feature test جدا داشته باشد.
 

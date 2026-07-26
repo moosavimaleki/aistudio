@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+/app/supervisor/wait-display
+exec /app/bin/browser-interface
