@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -18,9 +19,19 @@ func NewHTTPClient(proxyURL string) (*HTTPClient, error) {
 		if err != nil {
 			return nil, err
 		}
-		transport.Proxy = http.ProxyURL(proxy)
+		transport.Proxy = func(request *http.Request) (*url.URL, error) {
+			if localHost(request.URL.Hostname()) {
+				return nil, nil
+			}
+			return proxy, nil
+		}
 	}
 	return &HTTPClient{client: &http.Client{Transport: transport, Timeout: 90 * time.Second}}, nil
+}
+
+func localHost(host string) bool {
+	host = strings.ToLower(host)
+	return host == "localhost" || host == "127.0.0.1" || host == "::1" || !strings.Contains(host, ".")
 }
 
 func (h *HTTPClient) Request(ctx context.Context, method, endpoint string, headers map[string]string, body []byte) (*http.Response, error) {

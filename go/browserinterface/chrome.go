@@ -2,29 +2,27 @@ package browserinterface
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"net"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/chromedp/cdproto/network"
+	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
 	"github.com/hamed/aistudio-api/go/aistudio"
+	"github.com/hamed/aistudio-api/go/selenium"
 )
 
 type ChromeSession struct {
 	spec        BrowserSpec
 	port        int
 	broker      *Broker
-	process     *exec.Cmd
+	process     *selenium.Process
 	ctx         context.Context
 	cancel      context.CancelFunc
 	mu          sync.Mutex
+	headersMu   sync.RWMutex
 	fingerprint string
 	runtime     aistudio.RuntimeConfig
 	profile     map[string]string
@@ -33,43 +31,16 @@ type ChromeSession struct {
 }
 
 func NewChromeSession(spec BrowserSpec, port int, broker *Broker) *ChromeSession {
-	return &ChromeSession{spec: spec, port: port, broker: broker, headers: map[string]string{}}
+	return &ChromeSession{spec: spec, port: port, broker: broker, process: selenium.NewProcess(spec.ID, port, 0), headers: map[string]string{}}
 }
 func (s *ChromeSession) Start() error {
-	if s.process != nil {
+	if s.process.Running() {
 		return nil
 	}
-	profile := filepath.Join(defaultValue(os.Getenv("CHROME_RUNTIME_DIR"), "/app/browser-profiles"), "profiles", s.spec.ID)
-	extension := filepath.Join(defaultValue(os.Getenv("CHROME_RUNTIME_DIR"), "/app/browser-profiles"), "extensions", s.spec.ID)
-	if err := os.MkdirAll(profile, 0755); err != nil {
-		return err
-	}
-	for _, name := range []string{"SingletonLock", "SingletonCookie", "SingletonSocket"} {
-		_ = os.Remove(filepath.Join(profile, name))
-	}
-	if err := copyExtension(defaultValue(os.Getenv("EXTENSION_SOURCE_DIR"), "/app/extension"), extension, s.spec.ID); err != nil {
-		return err
-	}
-	args := []string{"--no-sandbox", "--disable-gpu", "--no-first-run", "--no-default-browser-check", "--disable-search-engine-choice-screen", "--remote-debugging-address=127.0.0.1", fmt.Sprintf("--remote-debugging-port=%d", s.port), "--user-data-dir=" + profile, "--disable-extensions-except=" + extension, "--load-extension=" + extension, "about:blank"}
-	if proxy := os.Getenv("LAB_PROXY_URL"); proxy != "" {
-		args = append(args, "--proxy-server="+proxy, "--proxy-bypass-list=127.0.0.1;localhost;<-loopback>")
-	}
-	s.process = exec.Command(defaultValue(os.Getenv("CHROME_EXECUTABLE"), "/usr/bin/google-chrome"), args...)
 	if err := s.process.Start(); err != nil {
 		return err
 	}
-	for attempt := 0; attempt < 100; attempt++ {
-		connection, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", s.port), 200*time.Millisecond)
-		if err == nil {
-			connection.Close()
-			break
-		}
-		if attempt == 99 {
-			return fmt.Errorf("Chrome %s CDP endpoint did not become ready", s.spec.ID)
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	allocator, allocatorCancel := chromedp.NewRemoteAllocator(context.Background(), fmt.Sprintf("http://127.0.0.1:%d", s.port))
+	allocator, allocatorCancel := chromedp.NewRemoteAllocator(context.Background(), s.process.CDPURL())
 	s.ctx, s.cancel = chromedp.NewContext(allocator)
 	chromedp.ListenTarget(s.ctx, func(event any) {
 		if request, ok := event.(*network.EventRequestWillBeSent); ok && strings.Contains(request.Request.URL, "MakerSuiteService/") {
@@ -77,9 +48,9 @@ func (s *ChromeSession) Start() error {
 			for name, value := range request.Request.Headers {
 				headers[strings.ToLower(name)] = fmt.Sprint(value)
 			}
-			s.mu.Lock()
+			s.headersMu.Lock()
 			s.headers = headers
-			s.mu.Unlock()
+			s.headersMu.Unlock()
 		}
 	})
 	_ = allocatorCancel
@@ -124,8 +95,14 @@ func (s *ChromeSession) Prepare(cookies, authUser string) (map[string]any, error
 	if authUser != "0" {
 		endpoint = strings.Replace(upstream.AIStudio["account_bootstrap_url"], "{auth_user}", authUser, 1)
 	}
+	pageContext, cancel := context.WithTimeout(s.ctx, 35*time.Second)
+	defer cancel()
 	var html string
-	if err := chromedp.Run(s.ctx, chromedp.Navigate(endpoint), chromedp.OuterHTML("html", &html)); err != nil {
+	if err := chromedp.Run(pageContext,
+		chromedp.ActionFunc(func(ctx context.Context) error { _, _, _, err := page.Navigate(endpoint).Do(ctx); return err }),
+		chromedp.Sleep(2*time.Second),
+		chromedp.OuterHTML("html", &html),
+	); err != nil {
 		return nil, err
 	}
 	if strings.Contains(s.currentURL(), "accounts.google.com") {
@@ -142,7 +119,12 @@ func (s *ChromeSession) Prepare(cookies, authUser string) (map[string]any, error
 		return nil, err
 	}
 	s.runtime = runtime
-	s.profile = map[string]string{"Accept": "*/*", "Accept-Language": "en-US,en;q=0.9,fa;q=0.8", "User-Agent": browser.UserAgent, "X-Client-Data": upstream.Opaque["x_client_data"]}
+	s.profile = map[string]string{
+		"Accept": "*/*", "Accept-Language": "en-US,en;q=0.9,fa;q=0.8",
+		"User-Agent": browser.UserAgent, "Priority": "u=1, i",
+		"sec-fetch-dest": "empty", "sec-fetch-mode": "cors", "sec-fetch-site": "same-site",
+		"x-client-data": upstream.Opaque["x_client_data"],
+	}
 	s.cookies, err = s.readCookies()
 	if err != nil {
 		return nil, err
@@ -198,11 +180,7 @@ func (s *ChromeSession) Close() {
 		s.cancel()
 		s.cancel = nil
 	}
-	if s.process != nil && s.process.Process != nil {
-		_ = s.process.Process.Kill()
-		_, _ = s.process.Process.Wait()
-		s.process = nil
-	}
+	s.process.Stop()
 }
 func parseCookieHeader(header string) []aistudio.CookieRecord {
 	result := []aistudio.CookieRecord{}
@@ -225,35 +203,3 @@ func joinCookies(records []aistudio.CookieRecord) string {
 	}
 	return strings.Join(values, "; ")
 }
-func copyExtension(source, target, id string) error {
-	_ = os.RemoveAll(target)
-	if err := os.MkdirAll(target, 0755); err != nil {
-		return err
-	}
-	return filepath.Walk(source, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		relative, _ := filepath.Rel(source, path)
-		destination := filepath.Join(target, relative)
-		if info.IsDir() {
-			return os.MkdirAll(destination, 0755)
-		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		if err := os.MkdirAll(filepath.Dir(destination), 0755); err != nil {
-			return err
-		}
-		return os.WriteFile(destination, data, 0644)
-	})
-}
-func defaultValue(value, fallback string) string {
-	if value == "" {
-		return fallback
-	}
-	return value
-}
-
-var _ = json.RawMessage{}

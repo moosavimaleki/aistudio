@@ -3,11 +3,13 @@ package main
 import (
 	"github.com/hamed/aistudio-api/go/aistudio"
 	"github.com/hamed/aistudio-api/go/gencontent"
+	"github.com/hamed/aistudio-api/go/metrics"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -26,11 +28,19 @@ func main() {
 		log.Fatal(err)
 	}
 	defer pool.Close()
+	metricStore, err := metrics.FromEnv()
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer metricStore.Close()
 	port := os.Getenv("GENCONTENT_PORT")
 	if port == "" {
 		port = "8000"
 	}
-	server := &http.Server{Addr: ":" + port, Handler: gencontent.NewServer(gencontent.NewService(settings, pool), pool).Handler(), ReadHeaderTimeout: 10 * time.Second}
+	handler := metrics.HTTP(metricStore, func(path string) bool {
+		return path == "/" || path == "/health" || strings.HasPrefix(path, "/dashboard")
+	}, gencontent.NewServer(gencontent.NewService(settings, pool), pool).Handler())
+	server := &http.Server{Addr: ":" + port, Handler: handler, ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		log.Printf("gencontent listening on %s", port)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
