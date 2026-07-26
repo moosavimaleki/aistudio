@@ -44,6 +44,41 @@ func (h *HTTPClient) Request(ctx context.Context, method, endpoint string, heade
 	}
 	return h.client.Do(req)
 }
+
+func (h *HTTPClient) RequestRetry(
+	ctx context.Context,
+	method, endpoint string,
+	headers map[string]string,
+	body []byte,
+	retries int,
+) (*http.Response, error) {
+	var lastErr error
+	for attempt := 0; attempt <= retries; attempt++ {
+		response, err := h.Request(ctx, method, endpoint, headers, body)
+		if err == nil && !retryableStatus(response.StatusCode) {
+			return response, nil
+		}
+		if err == nil {
+			if attempt == retries {
+				return response, nil
+			}
+			response.Body.Close()
+		} else {
+			lastErr = err
+		}
+		if attempt == retries {
+			break
+		}
+		timer := time.NewTimer(time.Duration(attempt+1) * 150 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
+	}
+	return nil, lastErr
+}
 func ReadBody(response *http.Response) (string, error) {
 	data, err := io.ReadAll(response.Body)
 	if err != nil {

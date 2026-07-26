@@ -1,0 +1,11 @@
+services:
+  browser-interface:
+    image: aistudio-python-test:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.python-test
+  gencontent:
+    image: aistudio-python-test:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.python-test

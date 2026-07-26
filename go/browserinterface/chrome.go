@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/chromedp/cdproto/fetch"
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
@@ -22,7 +23,10 @@ type ChromeSession struct {
 	ctx         context.Context
 	cancel      context.CancelFunc
 	mu          sync.Mutex
+	stateMu     sync.RWMutex
 	headersMu   sync.RWMutex
+	primeMu     sync.Mutex
+	primeResult chan error
 	fingerprint string
 	runtime     aistudio.RuntimeConfig
 	profile     map[string]string
@@ -43,14 +47,17 @@ func (s *ChromeSession) Start() error {
 	allocator, allocatorCancel := chromedp.NewRemoteAllocator(context.Background(), s.process.CDPURL())
 	s.ctx, s.cancel = chromedp.NewContext(allocator)
 	chromedp.ListenTarget(s.ctx, func(event any) {
-		if request, ok := event.(*network.EventRequestWillBeSent); ok && strings.Contains(request.Request.URL, "MakerSuiteService/") {
-			headers := map[string]string{}
-			for name, value := range request.Request.Headers {
-				headers[strings.ToLower(name)] = fmt.Sprint(value)
+		switch request := event.(type) {
+		case *network.EventRequestWillBeSent:
+			if strings.Contains(request.Request.URL, "MakerSuiteService/") {
+				s.captureHeaders(request.Request.Headers)
 			}
-			s.headersMu.Lock()
-			s.headers = headers
-			s.headersMu.Unlock()
+		case *network.EventRequestWillBeSentExtraInfo:
+			if headerValue(request.Headers, "x-client-data") != "" {
+				s.captureHeaders(request.Headers)
+			}
+		case *fetch.EventRequestPaused:
+			s.captureNativeGenerate(request)
 		}
 	})
 	_ = allocatorCancel
@@ -63,7 +70,10 @@ func (s *ChromeSession) Prepare(cookies, authUser string) (map[string]any, error
 		return nil, err
 	}
 	fingerprint := SessionFingerprint(cookies, authUser)
-	if s.fingerprint == fingerprint && s.runtime.APIKey != "" {
+	s.stateMu.RLock()
+	sameSession := s.fingerprint == fingerprint && s.runtime.APIKey != ""
+	s.stateMu.RUnlock()
+	if sameSession {
 		return s.snapshotLocked()
 	}
 	for _, cookie := range parseCookieHeader(cookies) {
@@ -118,18 +128,35 @@ func (s *ChromeSession) Prepare(cookies, authUser string) (map[string]any, error
 	if err := chromedp.Run(s.ctx, chromedp.Evaluate(`({userAgent:navigator.userAgent})`, &browser)); err != nil {
 		return nil, err
 	}
-	s.runtime = runtime
-	s.profile = map[string]string{
+	profile := map[string]string{
 		"Accept": "*/*", "Accept-Language": "en-US,en;q=0.9,fa;q=0.8",
 		"User-Agent": browser.UserAgent, "Priority": "u=1, i",
 		"sec-fetch-dest": "empty", "sec-fetch-mode": "cors", "sec-fetch-site": "same-site",
 		"x-client-data": upstream.Opaque["x_client_data"],
 	}
-	s.cookies, err = s.readCookies()
+	primeContext, primeCancel := context.WithTimeout(s.ctx, 50*time.Second)
+	defer primeCancel()
+	if err := s.primeNativeGenerate(primeContext); err != nil {
+		return nil, err
+	}
+	identityContext, identityCancel := context.WithTimeout(s.ctx, 15*time.Second)
+	defer identityCancel()
+	if err := s.waitForRPCIdentity(identityContext); err != nil {
+		return nil, err
+	}
+	for name, value := range s.observedTransportProfile() {
+		profile[name] = value
+	}
+	currentCookies, err = s.readCookies()
 	if err != nil {
 		return nil, err
 	}
-	s.fingerprint = SessionFingerprint(joinCookies(s.cookies), authUser)
+	s.stateMu.Lock()
+	s.runtime = runtime
+	s.profile = profile
+	s.cookies = currentCookies
+	s.fingerprint = SessionFingerprint(joinCookies(currentCookies), authUser)
+	s.stateMu.Unlock()
 	return s.snapshotLocked()
 }
 func (s *ChromeSession) Snapshot() (map[string]any, error) {
@@ -137,19 +164,50 @@ func (s *ChromeSession) Snapshot() (map[string]any, error) {
 	defer s.mu.Unlock()
 	return s.snapshotLocked()
 }
+func (s *ChromeSession) Ready() bool {
+	s.stateMu.RLock()
+	defer s.stateMu.RUnlock()
+	return s.fingerprint != "" &&
+		s.runtime.APIKey != "" &&
+		s.profile["User-Agent"] != "" &&
+		s.profile["x-client-data"] != ""
+}
 func (s *ChromeSession) snapshotLocked() (map[string]any, error) {
+	s.stateMu.RLock()
 	if s.runtime.APIKey == "" {
+		s.stateMu.RUnlock()
 		return nil, fmt.Errorf("Container browser session is not ready")
 	}
-	cookies, err := s.readCookies()
+	runtimeConfig := s.runtime
+	profile := make(map[string]string, len(s.profile))
+	for name, value := range s.profile {
+		profile[name] = value
+	}
+	s.stateMu.RUnlock()
+	browserCookies, err := s.readBrowserCookies()
 	if err != nil {
 		return nil, err
 	}
+	cookies := googleCookieRecords(browserCookies)
+	if err := persistCookieFile(s.spec.CookieFile, browserCookies); err != nil {
+		return nil, fmt.Errorf("persist Chrome cookies: %w", err)
+	}
+	s.stateMu.Lock()
 	s.cookies = cookies
-	runtime := map[string]any{"apiKey": s.runtime.APIKey, "visitId": s.runtime.VisitID, "authUser": s.runtime.AuthUser, "attestationEnabled": s.runtime.AttestationEnabled}
-	return map[string]any{"runtimeConfig": runtime, "transportProfile": s.profile, "cookieRecords": cookies}, nil
+	s.spec.CookieHeader = joinCookies(cookies)
+	s.fingerprint = SessionFingerprint(s.spec.CookieHeader, runtimeConfig.AuthUser)
+	s.stateMu.Unlock()
+	runtime := map[string]any{"apiKey": runtimeConfig.APIKey, "visitId": runtimeConfig.VisitID, "authUser": runtimeConfig.AuthUser, "attestationEnabled": runtimeConfig.AttestationEnabled}
+	return map[string]any{"runtimeConfig": runtime, "transportProfile": profile, "cookieRecords": cookies}, nil
 }
 func (s *ChromeSession) readCookies() ([]aistudio.CookieRecord, error) {
+	cookies, err := s.readBrowserCookies()
+	if err != nil {
+		return nil, err
+	}
+	return googleCookieRecords(cookies), nil
+}
+func (s *ChromeSession) readBrowserCookies() ([]*network.Cookie, error) {
 	var cookies []*network.Cookie
 	err := chromedp.Run(s.ctx, chromedp.ActionFunc(func(ctx context.Context) error {
 		var readErr error
@@ -159,6 +217,9 @@ func (s *ChromeSession) readCookies() ([]aistudio.CookieRecord, error) {
 	if err != nil {
 		return nil, err
 	}
+	return cookies, nil
+}
+func googleCookieRecords(cookies []*network.Cookie) []aistudio.CookieRecord {
 	result := []aistudio.CookieRecord{}
 	for _, cookie := range cookies {
 		domain := strings.TrimPrefix(strings.ToLower(cookie.Domain), ".")
@@ -166,7 +227,12 @@ func (s *ChromeSession) readCookies() ([]aistudio.CookieRecord, error) {
 			result = append(result, aistudio.CookieRecord{Name: cookie.Name, Value: cookie.Value})
 		}
 	}
-	return result, nil
+	return result
+}
+func (s *ChromeSession) Spec() BrowserSpec {
+	s.stateMu.RLock()
+	defer s.stateMu.RUnlock()
+	return s.spec
 }
 func (s *ChromeSession) currentURL() string {
 	var value string

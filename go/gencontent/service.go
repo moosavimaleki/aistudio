@@ -140,26 +140,24 @@ func resolveInlineData(ctx context.Context, input aistudio.GenerateInput, tab *a
 			if !ok {
 				continue
 			}
-			inline, ok := part["inlineData"].(map[string]any)
-			if !ok {
+			inline, found, err := readInlinePart(part)
+			if err != nil {
+				return input, err
+			}
+			if !found {
 				continue
 			}
-			data, ok := inline["data"].(string)
-			mimeType, mimeOK := inline["mimeType"].(string)
-			if !ok || !mimeOK || mimeType == "" {
-				return input, fmt.Errorf("inlineData requires data and mimeType")
-			}
-			decoded, err := aistudio.DecodeInlineData(data)
+			decoded, err := aistudio.DecodeInlineData(inline.data)
 			if err != nil {
 				return input, fmt.Errorf("inlineData.data must be valid base64")
 			}
-			name, _ := inline["displayName"].(string)
-			fileID, err := tab.UploadBytes(ctx, decoded, mimeType, name)
+			fileID, err := tab.UploadBytes(ctx, decoded, inline.mimeType, inline.displayName)
 			if err != nil {
 				return input, err
 			}
 			delete(part, "inlineData")
-			part["fileData"] = map[string]any{"fileId": fileID, "mimeType": mimeType}
+			delete(part, "inline_data")
+			part["fileData"] = map[string]any{"fileId": fileID, "mimeType": inline.mimeType}
 		}
 	}
 	input.Contents = contents

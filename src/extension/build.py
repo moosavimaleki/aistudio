@@ -5,16 +5,18 @@ import os
 from pathlib import Path
 from urllib.parse import urlsplit
 
+
 EXTENSION_DIR = Path(__file__).resolve().parent
 OUTPUT_DIR = EXTENSION_DIR / "dist"
 
 
 def upstream_value(section: str, name: str) -> str:
-    """Read the small, scalar-only upstream contract without runtime PyYAML."""
+    """Read the small scalar upstream contract without a YAML dependency."""
 
     configured = os.getenv("AISTUDIO_UPSTREAM_CONFIG", "")
     candidates = [
         Path(configured) if configured else None,
+        EXTENSION_DIR.parent / "config" / "upstream.yaml",
         EXTENSION_DIR.parents[1] / "config" / "upstream.yaml",
         Path("/build/config/upstream.yaml"),
     ]

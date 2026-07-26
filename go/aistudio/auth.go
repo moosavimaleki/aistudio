@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -51,7 +50,11 @@ func (a *AuthContext) Authorization() string {
 	if primary == "" {
 		return ""
 	}
-	proof := func(cookie, name string) string { return name + " " + sha1Hex(cookie+" "+a.Origin) }
+	timestamp := fmt.Sprint(a.Clock().Unix())
+	proof := func(cookie, name string) string {
+		digest := sha1Hex(timestamp + " " + cookie + " " + a.Origin)
+		return name + " " + timestamp + "_" + digest
+	}
 	parts := []string{proof(primary, scheme)}
 	if secure {
 		for _, item := range []struct{ name, scheme string }{{"__Secure-1PAPISID", "SAPISID1PHASH"}, {"__Secure-3PAPISID", "SAPISID3PHASH"}} {
@@ -60,6 +63,5 @@ func (a *AuthContext) Authorization() string {
 			}
 		}
 	}
-	_ = strconv.IntSize // Keeps the contract intentionally free of browser globals.
 	return strings.Join(parts, " ")
 }

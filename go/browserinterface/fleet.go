@@ -66,10 +66,8 @@ func (f *Fleet) Spec(id string) (BrowserSpec, error) {
 	if err != nil {
 		return BrowserSpec{}, err
 	}
-	for _, spec := range f.config.Browsers {
-		if spec.ID == resolved {
-			return spec, nil
-		}
+	if session := f.sessions[resolved]; session != nil {
+		return session.Spec(), nil
 	}
 	return BrowserSpec{}, fmt.Errorf("Unknown browserId: %s", id)
 }
@@ -81,12 +79,13 @@ func (f *Fleet) Status() []map[string]any {
 		f.mu.Lock()
 		warmError := f.warmErrors[spec.ID]
 		f.mu.Unlock()
-		items = append(items, map[string]any{"browserId": spec.ID, "authUser": spec.AuthUser, "connected": health["connected"], "pendingJobs": health["pendingJobs"], "heartbeatAgeSeconds": health["heartbeatAgeSeconds"], "ready": session.runtime.APIKey != "", "sessionState": sessionState(session, health), "warmError": warmError})
+		ready := session.Ready()
+		items = append(items, map[string]any{"browserId": spec.ID, "authUser": spec.AuthUser, "connected": health["connected"], "pendingJobs": health["pendingJobs"], "heartbeatAgeSeconds": health["heartbeatAgeSeconds"], "ready": ready, "sessionState": sessionState(ready, health), "warmError": warmError})
 	}
 	return items
 }
-func sessionState(session *ChromeSession, health map[string]any) string {
-	if session.runtime.APIKey != "" {
+func sessionState(ready bool, health map[string]any) string {
+	if ready {
 		return "READY"
 	}
 	if connected, _ := health["connected"].(bool); connected {

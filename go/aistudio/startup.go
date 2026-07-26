@@ -17,7 +17,7 @@ func (t *Tab) unary(ctx context.Context, method string, body any, loggingContext
 		return nil, err
 	}
 	encoded, _ := json.Marshal(body)
-	response, err := t.HTTP.Request(ctx, "POST", endpoint, headers, encoded)
+	response, err := t.HTTP.RequestRetry(ctx, "POST", endpoint, headers, encoded, 4)
 	if err != nil {
 		return nil, err
 	}
