@@ -1,16 +1,41 @@
 """بسته‌های نهایی افزونه را از ماژول‌های کوچک و خوانا می‌سازد."""
 
 import json
+import os
 from pathlib import Path
-import sys
 from urllib.parse import urlsplit
-
 
 EXTENSION_DIR = Path(__file__).resolve().parent
 OUTPUT_DIR = EXTENSION_DIR / "dist"
-sys.path.insert(0, str(EXTENSION_DIR.parent))
 
-from shared import upstream_value
+
+def upstream_value(section: str, name: str) -> str:
+    """Read the small, scalar-only upstream contract without runtime PyYAML."""
+
+    configured = os.getenv("AISTUDIO_UPSTREAM_CONFIG", "")
+    candidates = [
+        Path(configured) if configured else None,
+        EXTENSION_DIR.parents[1] / "config" / "upstream.yaml",
+        Path("/build/config/upstream.yaml"),
+    ]
+    path = next((item for item in candidates if item and item.is_file()), None)
+    if path is None:
+        raise FileNotFoundError("config/upstream.yaml was not found")
+
+    current = ""
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if not raw.startswith((" ", "\t")) and line.endswith(":"):
+            current = line[:-1]
+            continue
+        if current != section or ":" not in line:
+            continue
+        key, value = (item.strip() for item in line.split(":", 1))
+        if key == name:
+            return value.strip("\"'")
+    raise ValueError(f"Missing upstream config value: {section}.{name}")
 
 BUNDLES = {
     "page.js": (

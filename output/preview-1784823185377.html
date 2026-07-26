@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>kin3o — Lottie Preview</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #1a1a1a;
+    color: #e0e0e0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+    padding: 2rem;
+  }
+  h1 {
+    font-size: 1.2rem;
+    font-weight: 500;
+    color: #888;
+    margin-bottom: 1.5rem;
+    letter-spacing: 0.05em;
+  }
+  #animation-container {
+    width: 512px;
+    height: 512px;
+    max-width: 90vw;
+    max-height: 90vw;
+    background: #2a2a2a;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+  .controls {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 1.5rem;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  button {
+    background: #333;
+    color: #e0e0e0;
+    border: 1px solid #444;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: background 0.15s;
+  }
+  button:hover { background: #444; }
+  button.active { background: #D97706; color: #fff; border-color: #D97706; }
+  .meta {
+    margin-top: 1rem;
+    font-size: 0.8rem;
+    color: #666;
+    text-align: center;
+    line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+<h1>KIN3O</h1>
+<div id="animation-container"></div>
+<div class="controls">
+  <button id="btn-play" class="active" onclick="togglePlay()">Pause</button>
+  <button id="btn-05x" onclick="setSpeed(0.5)">0.5x</button>
+  <button id="btn-1x" class="active" onclick="setSpeed(1)">1x</button>
+  <button id="btn-2x" onclick="setSpeed(2)">2x</button>
+  <button id="btn-loop" class="active" onclick="toggleLoop()">Loop</button>
+  <button onclick="copyJson()">Copy JSON</button>
+  <button onclick="downloadJson()">Download</button>
+</div>
+<div class="meta" id="meta"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
+<script>
+  const animData = {"v":"5.5.2","fr":60,"ip":0,"op":120,"w":512,"h":512,"ddd":0,"assets":[],"layers":[{"ty":4,"ind":1,"nm":"Motion Lines","ip":0,"op":120,"st":0,"ddd":0,"ks":{"a":{"a":0,"k":[0,0]},"p":{"a":0,"k":[256,256]},"s":{"a":0,"k":[100,100]},"r":{"a":0,"k":0},"o":{"a":1,"k":[{"t":0,"s":[0],"o":{"x":[0.42],"y":[0]},"i":{"x":[0.58],"y":[1]}},{"t":12,"s":[0],"o":{"x":[0],"y":[0]},"i":{"x":[0.58],"y":[1]}},{"t":18,"s":[58],"o":{"x":[0.42],"y":[0]},"i":{"x":[0.58],"y":[1]}},{"t":32,"s":[58],"o":{"x":[0.42],"y":[0]},"i":{"x":[1],"y":[1]}},{"t":43,"s":[0],"o":{"x":[0.42],"y":[0]},"i":{"x":[0.58],"y":[1]}},{"t":120,"s":[0]}]}},"shapes":[{"ty":"gr","nm":"Ringing Lines","it":[{"ty":"sh","nm":"Left Curve","ks":{"a":0,"k":{"c":false,"v":[[-128,-8],[-145,4],[-152,25],[-149,47]],"i":[[0,0],[4,-5],[0,-7],[-3,-6]],"o":[[-6,4],[-3,7],[0,7],[0,0]]}}},{"ty":"sh","nm":"Right Curve","ks":{"a":0,"k":{"c":false,"v":[[128,-8],[145,4],[152,25],[149,47]],"i":[[0,0],[-4,-5],[0,-7],[3,-6]],"o":[[6,4],[3,7],[0,7],[0,0]]}}},{"ty":"st","nm":"Line Stroke","c":{"a":0,"k":[0.055,0.102,0.188,1]},"o":{"a":0,"k":100},"w":{"a":0,"k":10},"lc":2,"lj":2},{"ty":"tr","p":{"a":0,"k":[0,0]},"a":{"a":0,"k":[0,0]},"s":{"a":0,"k":[100,100]},"r":{"a":0,"k":0},"o":{"a":0,"k":100}}]}],"bm":0},{"ty":4,"ind":2,"nm":"Clapper","ip":0,"op":120,"st":0,"ddd":0,"ks":{"a":{"a":0,"k":[0,0]},"p":{"a":1,"k":[{"t":0,"s":[256,370],"o":{"x":[0.42],"y":[0]},"i":{"x":[0.58],"y":[1]}},{"t":15,"s":[257,370],"o":{"x":[0],"y":[0]},"i":{"x":[0.58],"y":[1]}},{"t":23,"s":[264,370],"o":{"x":[0.42],"y":[0]},"i":{"x":[0.58],"y":[1]}},{"t":33,"s":[250,370],"o":{"x":[0.42],"y":[0]},"i":{"x":[0.58],"y":[1]}},{"t":43,"s":[260,370],"o":{"x":[0.42],"y":[0]},"i":{"x":[0.58],"y":[1]}},{"t":53,"s":[253,370],"o":{"x":[0.42],"y":[0]},"i":{"x":[0.58],"y":[1]}},{"t":63,"s":[258,370],"o":{"x":[0.42],"y":[0]},"i":{"x":[0.58],"y":[1]}},{"t":75,"s":[256,370],"o":{"x":[0.42],"y":[0]},"i":{"x":[0.58],"y":[1]}},{"t":120,"s":[256,370]}]},"s":{"a":0,"k":[100,100]},"r":{"a":0,"k":0},"o":{"a":0,"k":100}},"shapes":[{"ty":"gr","nm":"Clapper Group","it":[{"ty":"el","nm":"Clapper Circle","p":{"a":0,"k":[0,0]},"s":{"a":0,"k":[30,30]}},{"ty":"fl","nm":"Clapper Fill","c":{"a":0,"k":[0.055,0.102,0.188,1]},"o":{"a":0,"k":100},"r":1},{"ty":"tr","p":{"a":0,"k":[0,0]},"a":{"a":0,"k":[0,0]},"s":{"a":0,"k":[100,100]},"r":{"a":0,"k":0},"o":{"a":0,"k":100}}]}],"bm":0},{"ty":4,"ind":3,"nm":"Bell","ip":0,"op":120,"st":0,"ddd":0,"ks":{"a":{"a":0,"k":[0,0]},"p":{"a":0,"k":[256,133]},"s":{"a":0,"k":[100,100]},"r":{"a":1,"k":[{"t":0,"s":[0],"o":{"x":[0.42],"y":[0]},"i":{"x":[0.58],"y":[1]}},{"t":12,"s":[0],"o":{"x":[0],"y":[0]},"i":{"x":[0.58],"y":[1]}},{"t":20,"s":[-12],"o":{"x":[0.42],"y":[0]},"i":{"x":[0.58],"y":[1]}},{"t":30,"s":[10],"o":{"x":[0.42],"y":[0]},"i":{"x":[0.58],"y":[1]}},{"t":40,"s":[-7],"o":{"x":[0.42],"y":[0]},"i":{"x":[0.58],"y":[1]}},{"t":50,"s":[5],"o":{"x":[0.42],"y":[0]},"i":{"x":[0.58],"y":[1]}},{"t":60,"s":[-3],"o":{"x":[0.42],"y":[0]},"i":{"x":[0.58],"y":[1]}},{"t":72,"s":[0],"o":{"x":[0.42],"y":[0]},"i":{"x":[0.58],"y":[1]}},{"t":80,"s":[0],"o":{"x":[0.42],"y":[0]},"i":{"x":[0.58],"y":[1]}},{"t":120,"s":[0]}]},"o":{"a":0,"k":100}},"shapes":[{"ty":"gr","nm":"Bell Outline","it":[{"ty":"rc","nm":"Top Handle","p":{"a":0,"k":[0,8]},"s":{"a":0,"k":[42,22]},"r":{"a":0,"k":11}},{"ty":"sh","nm":"Bell Body","ks":{"a":0,"k":{"c":false,"v":[[0,22],[34,31],[61,62],[64,110],[70,155],[100,201],[100,214],[-100,214],[-100,201],[-70,155],[-64,110],[-61,62],[-34,31],[0,22]],"i":[[0,0],[-15,-1],[-12,-13],[-1,-19],[-2,-18],[-18,-23],[0,-5],[0,0],[0,5],[18,-23],[2,18],[1,19],[12,-13],[15,-1]],"o":[[15,-1],[12,13],[1,19],[2,18],[18,23],[0,5],[0,0],[0,-5],[-18,23],[-2,18],[-1,19],[-12,13],[-15,-1],[0,0]]}}},{"ty":"st","nm":"Bell Stroke","c":{"a":0,"k":[0.055,0.102,0.188,1]},"o":{"a":0,"k":100},"w":{"a":0,"k":14},"lc":2,"lj":2},{"ty":"tr","p":{"a":0,"k":[0,0]},"a":{"a":0,"k":[0,0]},"s":{"a":0,"k":[100,100]},"r":{"a":0,"k":0},"o":{"a":0,"k":100}}]}],"bm":0}]};
+  const anim = lottie.loadAnimation({
+    container: document.getElementById('animation-container'),
+    renderer: 'svg',
+    loop: true,
+    autoplay: true,
+    animationData: animData,
+  });
+
+  const fps = animData.fr || 60;
+  const frames = (animData.op || 0) - (animData.ip || 0);
+  const duration = (frames / fps).toFixed(1);
+  document.getElementById('meta').innerHTML =
+    `${animData.w}×${animData.h}px · ${fps}fps · ${frames} frames · ${duration}s`;
+
+  let playing = true;
+  let looping = true;
+  let speed = 1;
+
+  function togglePlay() {
+    playing = !playing;
+    if (playing) { anim.play(); } else { anim.pause(); }
+    document.getElementById('btn-play').textContent = playing ? 'Pause' : 'Play';
+    document.getElementById('btn-play').classList.toggle('active', playing);
+  }
+
+  function setSpeed(s) {
+    speed = s;
+    anim.setSpeed(s);
+    document.getElementById('btn-05x').classList.toggle('active', s === 0.5);
+    document.getElementById('btn-1x').classList.toggle('active', s === 1);
+    document.getElementById('btn-2x').classList.toggle('active', s === 2);
+  }
+
+  function toggleLoop() {
+    looping = !looping;
+    anim.loop = looping;
+    document.getElementById('btn-loop').classList.toggle('active', looping);
+  }
+
+  function copyJson() {
+    navigator.clipboard.writeText(JSON.stringify(animData, null, 2));
+  }
+
+  function downloadJson() {
+    const blob = new Blob([JSON.stringify(animData, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'animation.json';
+    a.click();
+  }
+</script>
+</body>
+</html>
