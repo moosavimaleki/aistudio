@@ -1,6 +1,6 @@
 ARG CHROME_BASE_IMAGE=moosavimaleki/ai-chrome-base:latest
 
-FROM golang:1.22-bookworm AS go-builder
+FROM golang:1.23-bookworm AS go-builder
 
 WORKDIR /build
 COPY go.mod go.sum ./

@@ -211,7 +211,7 @@ func (s *ChromeSession) readBrowserCookies() ([]*network.Cookie, error) {
 	var cookies []*network.Cookie
 	err := chromedp.Run(s.ctx, chromedp.ActionFunc(func(ctx context.Context) error {
 		var readErr error
-		cookies, readErr = network.GetCookies().WithUrls([]string{"https://aistudio.google.com/"}).Do(ctx)
+		cookies, readErr = network.GetCookies().WithURLs([]string{"https://aistudio.google.com/"}).Do(ctx)
 		return readErr
 	}))
 	if err != nil {

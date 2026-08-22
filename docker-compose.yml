@@ -8,8 +8,8 @@ services:
     ports:
       - "127.0.0.1:3345:3345"
       - "127.0.0.1:${GENCONTENT_HOST_PORT:-3346}:8000"
-      - "127.0.0.1:5900:5900"
-      - "127.0.0.1:7900:7900"
+      - "127.0.0.1:${VNC_HOST_PORT:-5901}:5900"
+      - "127.0.0.1:${NOVNC_HOST_PORT:-7900}:7900"
     env_file:
       - ./config/container.env
       - ./.env

@@ -20,10 +20,10 @@ Factory, and GenerateContent in one container. Redis is the only side service.
 ## نمونه کامل Docker Compose / Complete Docker Compose example
 
 اتصال به proxy آزمایشگاه الزامی است. پیش از اجرا مطمئن شوید proxy میزبان روی
-`127.0.0.1:10808` فعال است و فقط به staging می‌رود.
+`0.0.0.0:10810` فعال است و فقط به staging می‌رود.
 
 The lab proxy is required. Before starting, verify that the host proxy is
-available at `127.0.0.1:10808` and routes exclusively to staging.
+available at `0.0.0.0:10810` and routes exclusively to staging.
 
 ```yaml
 services:
@@ -45,8 +45,8 @@ services:
       REDIS_URL: "redis://redis:6379/0"
 
       # REQUIRED: both must point to the staging lab proxy
-      LAB_PROXY_URL: "http://host.docker.internal:10808"
-      AISTUDIO_PROXY_URL: "http://host.docker.internal:10808"
+      LAB_PROXY_URL: "http://host.docker.internal:10810"
+      AISTUDIO_PROXY_URL: "http://host.docker.internal:10810"
 
       # AI Studio profile settings
       AISTUDIO_MODEL: "models/gemini-3.5-flash-lite"
