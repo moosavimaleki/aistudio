@@ -10,13 +10,17 @@ import (
 )
 
 type Server struct {
-	service *Service
-	pool    *Pool
+	service   *Service
+	pool      *Pool
+	dashboard *Dashboard
 }
 
-func NewServer(service *Service, pool *Pool) *Server { return &Server{service: service, pool: pool} }
+func NewServer(service *Service, pool *Pool, dashboard *Dashboard) *Server {
+	return &Server{service: service, pool: pool, dashboard: dashboard}
+}
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
+	s.dashboard.Register(mux)
 	mux.HandleFunc("/health", s.health)
 	mux.HandleFunc("/generate-content", s.legacy)
 	mux.HandleFunc("/v1/projects/", s.vertex)

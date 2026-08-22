@@ -37,9 +37,11 @@ func main() {
 	if port == "" {
 		port = "8000"
 	}
+	dashboard := gencontent.NewDashboard(metricStore, pool, os.Getenv("FACTORY_ORIGIN"))
+	serverHandler := gencontent.NewServer(gencontent.NewService(settings, pool), pool, dashboard).Handler()
 	handler := metrics.HTTP(metricStore, func(path string) bool {
 		return path == "/" || path == "/health" || strings.HasPrefix(path, "/dashboard")
-	}, gencontent.NewServer(gencontent.NewService(settings, pool), pool).Handler())
+	}, serverHandler)
 	server := &http.Server{Addr: ":" + port, Handler: handler, ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		log.Printf("gencontent listening on %s", port)
