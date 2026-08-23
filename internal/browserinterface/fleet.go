@@ -45,6 +45,34 @@ func (f *Fleet) Close() {
 		session.Close()
 	}
 }
+
+func (f *Fleet) Reset(id string) error {
+	session, err := f.Session(id)
+	if err != nil {
+		return err
+	}
+	spec := session.Spec()
+	if err := session.Reset(); err != nil {
+		f.setWarmError(spec.ID, err)
+		return err
+	}
+	if _, err := session.Prepare(spec.CookieHeader, spec.AuthUser); err != nil {
+		f.setWarmError(spec.ID, err)
+		return err
+	}
+	f.setWarmError(spec.ID, nil)
+	return nil
+}
+
+func (f *Fleet) setWarmError(id string, err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err == nil {
+		delete(f.warmErrors, id)
+		return
+	}
+	f.warmErrors[id] = err.Error()
+}
 func (f *Fleet) Resolve(id string) (string, error) {
 	if id == "" {
 		id = f.config.DefaultID
@@ -80,17 +108,22 @@ func (f *Fleet) Status() []map[string]any {
 		warmError := f.warmErrors[spec.ID]
 		f.mu.Unlock()
 		ready := session.Ready()
-		items = append(items, map[string]any{"browserId": spec.ID, "authUser": spec.AuthUser, "connected": health["connected"], "pendingJobs": health["pendingJobs"], "heartbeatAgeSeconds": health["heartbeatAgeSeconds"], "ready": ready, "sessionState": sessionState(ready, health), "warmError": warmError})
+		cookies := session.CookieDiagnostics()
+		items = append(items, map[string]any{"browserId": spec.ID, "authUser": spec.AuthUser, "connected": health["connected"], "pendingJobs": health["pendingJobs"], "heartbeatAgeSeconds": health["heartbeatAgeSeconds"], "ready": ready, "sessionState": sessionState(ready, health), "warmError": warmError, "cookieCount": cookies.Count, "authCookieCount": cookies.AuthCount, "cookieRevision": cookies.Revision, "cookieSourceCurrent": cookies.SourceCurrent})
 	}
 	return items
 }
 
 func (f *Fleet) Healthy() bool {
-	for _, status := range f.Status() {
-		if status["browserId"] == f.config.DefaultID {
-			connected, _ := status["connected"].(bool)
-			ready, _ := status["ready"].(bool)
-			return connected && ready
+	return healthyStatuses(f.Status())
+}
+
+func healthyStatuses(statuses []map[string]any) bool {
+	for _, status := range statuses {
+		connected, _ := status["connected"].(bool)
+		ready, _ := status["ready"].(bool)
+		if connected && ready {
+			return true
 		}
 	}
 	return false

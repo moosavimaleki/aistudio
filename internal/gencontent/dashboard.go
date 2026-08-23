@@ -17,14 +17,6 @@ type Dashboard struct {
 	client        *http.Client
 }
 
-type dashboardData struct {
-	GeneratedAt  time.Time      `json:"generatedAt"`
-	Pool         map[string]any `json:"pool"`
-	Browser      browserHealth  `json:"browser"`
-	BrowserError string         `json:"browserError,omitempty"`
-	Metrics      metrics.Window `json:"metrics"`
-}
-
 type browserHealth struct {
 	Backend   string           `json:"backend"`
 	Connected bool             `json:"connected"`
@@ -34,6 +26,10 @@ type browserHealth struct {
 type browserSession struct {
 	AuthUser            string  `json:"authUser"`
 	BrowserID           string  `json:"browserId"`
+	CookieCount         int     `json:"cookieCount"`
+	AuthCookieCount     int     `json:"authCookieCount"`
+	CookieRevision      int64   `json:"cookieRevision"`
+	CookieSourceCurrent bool    `json:"cookieSourceCurrent"`
 	Connected           bool    `json:"connected"`
 	HeartbeatAgeSeconds float64 `json:"heartbeatAgeSeconds"`
 	PendingJobs         int     `json:"pendingJobs"`
@@ -57,6 +53,8 @@ func NewDashboard(store *metrics.Store, pool *Pool, browserOrigin string) *Dashb
 func (d *Dashboard) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/", d.page)
 	mux.HandleFunc("/dashboard/data", d.data)
+	mux.HandleFunc("/dashboard/assets/style.css", d.style)
+	mux.HandleFunc("/dashboard/assets/app.js", d.script)
 }
 
 func (d *Dashboard) page(writer http.ResponseWriter, request *http.Request) {
@@ -64,8 +62,7 @@ func (d *Dashboard) page(writer http.ResponseWriter, request *http.Request) {
 		writer.WriteHeader(http.StatusNotFound)
 		return
 	}
-	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = writer.Write([]byte(dashboardHTML))
+	writeAsset(writer, "text/html; charset=utf-8", dashboardHTML)
 }
 
 func (d *Dashboard) data(writer http.ResponseWriter, request *http.Request) {
@@ -75,13 +72,36 @@ func (d *Dashboard) data(writer http.ResponseWriter, request *http.Request) {
 	}
 	window := dashboardWindow(request.URL.Query().Get("window"))
 	browser, browserError := d.readBrowserHealth(request)
-	writeJSON(writer, http.StatusOK, dashboardData{
-		GeneratedAt:  time.Now().UTC(),
-		Pool:         d.pool.Stats(request.Context()),
-		Browser:      browser,
-		BrowserError: browserError,
-		Metrics:      d.store.Read(request.Context(), window),
-	})
+	metricsWindow := d.store.Read(request.Context(), window)
+	writeJSON(writer, http.StatusOK, dashboardSnapshot(
+		metricsWindow,
+		window,
+		d.pool.Stats(request.Context()),
+		browser,
+		browserError,
+	))
+}
+
+func (d *Dashboard) style(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodGet {
+		writer.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	writeAsset(writer, "text/css; charset=utf-8", dashboardStyle)
+}
+
+func (d *Dashboard) script(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodGet {
+		writer.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	writeAsset(writer, "application/javascript; charset=utf-8", dashboardScript)
+}
+
+func writeAsset(writer http.ResponseWriter, contentType string, asset []byte) {
+	writer.Header().Set("Content-Type", contentType)
+	writer.Header().Set("Cache-Control", "no-store")
+	_, _ = writer.Write(asset)
 }
 
 func (d *Dashboard) readBrowserHealth(request *http.Request) (browserHealth, string) {

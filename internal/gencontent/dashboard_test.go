@@ -29,16 +29,19 @@ func TestDashboardRoutesExposeSessionMetadata(t *testing.T) {
 	if page.Code != http.StatusOK {
 		t.Fatalf("dashboard page status = %d", page.Code)
 	}
+	if !strings.Contains(page.Body.String(), "/dashboard/assets/style.css") {
+		t.Fatal("dashboard page does not load the historical stylesheet")
+	}
 
 	data := httptest.NewRecorder()
 	server.ServeHTTP(data, httptest.NewRequest(http.MethodGet, "/dashboard/data?window=60", nil))
 	if data.Code != http.StatusOK {
 		t.Fatalf("dashboard data status = %d", data.Code)
 	}
-	if !strings.Contains(data.Body.String(), `"browserId":"default"`) {
+	if !strings.Contains(data.Body.String(), `"browser_id":"default"`) {
 		t.Fatalf("dashboard response does not include browser session: %s", data.Body.String())
 	}
-	if !strings.Contains(data.Body.String(), `"browserError":"browser health returned HTTP 503"`) {
+	if !strings.Contains(data.Body.String(), `"browser_error":"browser health returned HTTP 503"`) {
 		t.Fatalf("dashboard response does not include browser health error: %s", data.Body.String())
 	}
 }

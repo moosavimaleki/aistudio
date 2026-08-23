@@ -63,7 +63,6 @@ services:
       CHROME_CDP_BASE_PORT: "9223"
       EXPECTED_BROWSER_MAJOR: ""
       AISTUDIO_PAGE_READY_TIMEOUT_MS: "60000"
-      TOKEN_FACTORY_SAME_BROWSER_PROBE: "1"
 
       # GenerateContent tab pool
       TAB_POOL_MAX: "100"

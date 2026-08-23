@@ -3,8 +3,8 @@ module github.com/hamed/aistudio-api
 go 1.23.0
 
 require (
-	github.com/chromedp/cdproto v0.0.0-20250403032234-65de8f5d025b
-	github.com/chromedp/chromedp v0.13.7
+	github.com/chromedp/cdproto v0.0.0-20250401205909-91afd104e2b8
+	github.com/chromedp/chromedp v0.13.5
 	github.com/redis/go-redis/v9 v9.5.1
 	gopkg.in/yaml.v3 v3.0.1
 )

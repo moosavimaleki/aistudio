@@ -22,20 +22,45 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/health", s.health)
 	mux.HandleFunc("/bootstrap", s.bootstrap)
 	mux.HandleFunc("/get-token", s.token)
+	mux.HandleFunc("/internal/browsers/", s.resetBrowser)
 	mux.HandleFunc("/internal/jobs/next", s.next)
 	mux.HandleFunc("/internal/jobs/", s.complete)
 	return mux
 }
+func (s *Server) resetBrowser(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodPost || !strings.HasSuffix(request.URL.Path, "/reset") {
+		writer.WriteHeader(http.StatusNotFound)
+		return
+	}
+	id := strings.TrimSuffix(strings.TrimPrefix(request.URL.Path, "/internal/browsers/"), "/reset")
+	resolved, err := s.fleet.Resolve(id)
+	if err != nil {
+		writeError(writer, http.StatusNotFound, err)
+		return
+	}
+	lock := s.tokens.browserLock(resolved)
+	lock.Lock()
+	defer lock.Unlock()
+	s.tokens.deactivate(resolved)
+	if err := s.fleet.Reset(resolved); err != nil {
+		writeError(writer, http.StatusServiceUnavailable, err)
+		return
+	}
+	log.Printf("browser session %s recovered and warmed", resolved)
+	writeJSON(writer, http.StatusOK, map[string]any{"ok": true, "browserId": resolved})
+}
 func (s *Server) health(writer http.ResponseWriter, request *http.Request) {
+	browsers := s.fleet.Status()
+	connected := healthyStatuses(browsers)
 	status := http.StatusOK
-	if !s.fleet.Healthy() {
+	if !connected {
 		status = http.StatusServiceUnavailable
 	}
 	writeJSON(writer, status, map[string]any{
 		"backend":     "container-extension",
-		"connected":   s.fleet.Healthy(),
+		"connected":   connected,
 		"pendingJobs": 0,
-		"browsers":    s.fleet.Status(),
+		"browsers":    browsers,
 	})
 }
 func (s *Server) bootstrap(writer http.ResponseWriter, request *http.Request) {

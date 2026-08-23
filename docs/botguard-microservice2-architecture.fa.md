@@ -236,22 +236,21 @@ authUser
 
 caller باید cookie records را پیش از ساخت Authorization و RPC اعمال کند. token صرفاً برای همان GenerateContent تازه است؛ reuse آن برای retry یا request جدید مجاز نیست.
 
-### same-browser probe
+### مرز درخواست کاربر
 
-`TOKEN_FACTORY_SAME_BROWSER_PROBE=1` یک ابزار تشخیصی است. browser-interface payload نهایی را با token بازگشتی، در همان browser realm و همان cookie context آزمایش می‌کند. هدف آن جداسازی خطای token/context از خطای client transport است، نه مسیر عادی inference.
+payload مربوط به caller هیچ‌وقت برای probe یا inference از داخل Chrome ارسال نمی‌شود. Chrome فقط provider بومی را نگه می‌دارد و برای digest همان درخواست token تازه می‌سازد؛ RPC نهایی را client مستقل Go ارسال می‌کند.
 
 ## native lifecycle warm-up
 
-warm-up در `browser/lifecycle.py` انجام می‌شود:
+warm-up در `internal/browserinterface/lifecycle.go` انجام می‌شود:
 
 1. UI page آماده می‌شود و در صورت نمایش consent، تأیید می‌گردد.
 2. یک prompt داخلی آماده‌سازی در textbox قرار می‌گیرد.
 3. submit native کلیک می‌شود.
-4. route مربوط به GenerateContent intercept می‌شود.
-5. وجود attestation در field 5 body بررسی می‌شود.
-6. request با `blockedbyclient` abort می‌شود.
+4. route مربوط به GenerateContent intercept می‌شود تا headerهای native ثبت شوند.
+5. request داخلی warm-up ادامه پیدا می‌کند تا UI نیز پاسخ عادی بگیرد و provider کامل آماده شود.
 
-بنابراین warm-up inference واقعی upstream را تکمیل نمی‌کند. هدفش فقط آماده‌بودن lifecycle browser/extension است. متن warm-up دادهٔ مکالمهٔ caller نیست و نباید وارد history virtual tab شود.
+این تنها inference مرورگری است و صرفاً هنگام warm-up با متن ثابت آزمایشگاه اجرا می‌شود. payload caller در این مسیر استفاده نمی‌شود و وارد history virtual tab نیز نخواهد شد.
 
 ## APIهای عملیاتی
 

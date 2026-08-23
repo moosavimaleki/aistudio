@@ -234,11 +234,19 @@ func (s *ChromeSession) Spec() BrowserSpec {
 	defer s.stateMu.RUnlock()
 	return s.spec
 }
+
+func (s *ChromeSession) Fingerprint() string {
+	s.stateMu.RLock()
+	defer s.stateMu.RUnlock()
+	return s.fingerprint
+}
+
 func (s *ChromeSession) currentURL() string {
 	var value string
 	_ = chromedp.Run(s.ctx, chromedp.Location(&value))
 	return value
 }
+
 func (s *ChromeSession) Close() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -247,6 +255,35 @@ func (s *ChromeSession) Close() {
 		s.cancel = nil
 	}
 	s.process.Stop()
+}
+
+// Reset discards the live page state. Prepare rebuilds it from the profile's
+// persisted cookie source immediately after this method returns.
+func (s *ChromeSession) Reset() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.Start(); err != nil {
+		return err
+	}
+
+	s.stateMu.Lock()
+	s.runtime = aistudio.RuntimeConfig{}
+	s.profile = nil
+	s.cookies = nil
+	s.fingerprint = ""
+	s.stateMu.Unlock()
+	s.headersMu.Lock()
+	s.headers = map[string]string{}
+	s.headersMu.Unlock()
+
+	ctx, cancel := context.WithTimeout(s.ctx, 15*time.Second)
+	defer cancel()
+	return chromedp.Run(ctx,
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			return network.ClearBrowserCookies().Do(ctx)
+		}),
+		chromedp.Navigate("about:blank"),
+	)
 }
 func parseCookieHeader(header string) []aistudio.CookieRecord {
 	result := []aistudio.CookieRecord{}

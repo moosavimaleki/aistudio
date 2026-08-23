@@ -3,8 +3,6 @@ package browserinterface
 import (
 	"fmt"
 	"log"
-	"os"
-	"strings"
 	"sync"
 )
 
@@ -13,13 +11,18 @@ type TokenService struct {
 	fleet     *Fleet
 	mu        sync.Mutex
 	locks     map[string]*sync.Mutex
-	activated map[string]string
+	activated map[string]providerActivation
+}
+
+type providerActivation struct {
+	sessionID string
+	index     int
 }
 
 func NewTokenService(broker *Broker, fleet *Fleet) *TokenService {
 	return &TokenService{
 		broker: broker, fleet: fleet,
-		locks: map[string]*sync.Mutex{}, activated: map[string]string{},
+		locks: map[string]*sync.Mutex{}, activated: map[string]providerActivation{},
 	}
 }
 func (s *TokenService) Create(body map[string]any) (map[string]any, error) {
@@ -53,7 +56,13 @@ func (s *TokenService) Create(body map[string]any) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	request, err := s.broker.Request(map[string]any{"digest": body["digest"], "authUser": authUser}, browserID)
+	sessionID := session.Fingerprint()
+	providerIndex, providerSelected := s.selectedProvider(browserID, sessionID)
+	payload := map[string]any{"digest": body["digest"], "authUser": authUser}
+	if providerSelected {
+		payload["providerIndex"] = providerIndex
+	}
+	request, err := s.broker.Request(payload, browserID)
 	if err != nil {
 		return nil, err
 	}
@@ -61,23 +70,12 @@ func (s *TokenService) Create(body map[string]any) (map[string]any, error) {
 	if token == "" {
 		return nil, fmt.Errorf("Container extension returned an empty token")
 	}
-	sessionID := session.Fingerprint()
-	if os.Getenv("TOKEN_FACTORY_SAME_BROWSER_PROBE") == "1" && s.activatedSession(browserID) != sessionID {
-		providerIndex, err := s.selectProvider(body, request, session)
+	if !providerSelected {
+		providerIndex, err := providerIndexFromSnapshot(request)
 		if err != nil {
 			return nil, err
 		}
-		request, err = s.broker.Request(map[string]any{
-			"digest": body["digest"], "authUser": authUser, "providerIndex": providerIndex,
-		}, browserID)
-		if err != nil {
-			return nil, err
-		}
-		token, _ = request["token"].(string)
-		if token == "" {
-			return nil, fmt.Errorf("Container extension returned an empty provider token")
-		}
-		s.activate(browserID, sessionID)
+		s.activate(browserID, sessionID, providerIndex)
 	}
 	current, err := session.Snapshot()
 	if err != nil {
@@ -107,61 +105,33 @@ func (s *TokenService) browserLock(browserID string) *sync.Mutex {
 	return lock
 }
 
-func (s *TokenService) activatedSession(browserID string) string {
+func (s *TokenService) selectedProvider(browserID, sessionID string) (int, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.activated[browserID]
+	activation, found := s.activated[browserID]
+	return activation.index, found && activation.sessionID == sessionID
 }
 
-func (s *TokenService) activate(browserID, sessionID string) {
+func (s *TokenService) activate(browserID, sessionID string, index int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.activated[browserID] = sessionID
+	s.activated[browserID] = providerActivation{sessionID: sessionID, index: index}
+	log.Printf("activated native provider %d for browser %s", index, browserID)
 }
 
-func (s *TokenService) selectProvider(body, snapshot map[string]any, session *ChromeSession) (int, error) {
-	tokens := []string{}
-	if candidates, ok := snapshot["candidateTokens"].([]any); ok {
-		for _, candidate := range candidates {
-			if token, ok := candidate.(string); ok && token != "" {
-				tokens = append(tokens, token)
-			}
-		}
+func (s *TokenService) deactivate(browserID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.activated, browserID)
+}
+
+func providerIndexFromSnapshot(snapshot map[string]any) (int, error) {
+	candidates, _ := snapshot["candidateTokens"].([]any)
+	if len(candidates) > 0 {
+		return len(candidates) - 1, nil
 	}
-	if len(tokens) == 0 {
-		if token, _ := snapshot["token"].(string); token != "" {
-			tokens = append(tokens, token)
-		}
+	if token, _ := snapshot["token"].(string); token != "" {
+		return 0, nil
 	}
-	if len(tokens) == 0 {
-		return 0, fmt.Errorf("native provider returned no candidate token")
-	}
-	generateRequest, _ := body["generateRequest"].(map[string]any)
-	diagnostics := []string{}
-	for index, token := range tokens {
-		probe, err := session.Probe(generateRequest, token)
-		if err == nil && probe.Status != 0 && probe.Status != 401 && probe.Status != 403 {
-			return index, nil
-		}
-		if err != nil {
-			diagnostics = append(diagnostics, fmt.Sprintf("%d:error=%v", index, err))
-			continue
-		}
-		body := probe.Body
-		if len(body) > 160 {
-			body = body[:160]
-		}
-		diagnostics = append(diagnostics, fmt.Sprintf(
-			"%d:status=%d network=%q location=%q blocked=%q directive=%q body=%q",
-			index, probe.Status, probe.NetworkError, probe.Location,
-			probe.BlockedURI, probe.ViolatedDirective, body,
-		))
-	}
-	fallback := len(tokens) - 1
-	log.Printf(
-		"same-browser probe was inconclusive; using native provider %d (%s)",
-		fallback,
-		strings.Join(diagnostics, "; "),
-	)
-	return fallback, nil
+	return 0, fmt.Errorf("native provider returned no token")
 }

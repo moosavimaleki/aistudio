@@ -1,85 +1,51 @@
 package gencontent
 
-const dashboardHTML = `<!doctype html>
+var dashboardHTML = []byte(`<!doctype html>
 <html lang="fa" dir="rtl">
 <head>
   <meta charset="utf-8">
-  <title>AI Studio Lab Dashboard</title>
-  <style>
-    body { font: 15px system-ui; margin: 24px; background: #101827; color: #e5e7eb; }
-    main { max-width: 1100px; margin: auto; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
-    .card { padding: 16px; background: #1f2937; border-radius: 10px; }
-    table { width: 100%; border-collapse: collapse; }
-    td, th { padding: 8px; text-align: right; border-bottom: 1px solid #374151; }
-  </style>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>GenContent Operations</title>
+  <link rel="stylesheet" href="/dashboard/assets/style.css">
 </head>
 <body>
   <main>
-    <h1>AI Studio Lab Dashboard</h1>
-    <p id="updated">در حال دریافت داده…</p>
-    <div class="grid" id="summary"></div>
-    <h2>Browser sessionها</h2>
-    <div class="card">
-      <table>
-        <thead><tr><th>Profile</th><th>Auth user</th><th>Session</th><th>Ready</th><th>Jobهای در انتظار</th><th>Heartbeat</th></tr></thead>
-        <tbody id="sessions"></tbody>
-      </table>
-    </div>
-    <h2>HTTP metrics</h2>
-    <div class="card"><pre id="metrics"></pre></div>
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">AI STUDIO LAB · OPERATIONS</div>
+        <h1>GenContent Control Room</h1>
+        <p>درخواست‌ها، sessionها، Chrome profileها و virtual tab pool</p>
+      </div>
+      <div class="controls">
+        <div id="health" class="health"><i></i><span>در حال اتصال</span></div>
+        <div class="windows">
+          <button data-window="15">۱۵ دقیقه</button>
+          <button data-window="60" class="active">۱ ساعت</button>
+          <button data-window="1440">۲۴ ساعت</button>
+        </div>
+      </div>
+    </header>
+
+    <section id="summary" class="cards"></section>
+    <section id="pipeline" class="pipeline"></section>
+    <section class="grid two">
+      <article class="panel chart-panel">
+        <div class="panel-head"><div><h2>روند درخواست</h2><p>موفق و ناموفق در بازهٔ انتخابی</p></div><div class="legend"><span class="request">کل</span><span class="success">موفق</span><span class="error">خطا</span></div></div>
+        <svg id="request-chart" viewBox="0 0 900 260" preserveAspectRatio="none"></svg>
+      </article>
+      <article class="panel"><div class="panel-head"><div><h2>تفکیک خطا</h2><p>بر اساس phase و status</p></div></div><div class="breakdowns"><div><h3>Phase</h3><div id="phase-bars"></div></div><div><h3>Status</h3><div id="status-bars"></div></div></div></article>
+    </section>
+
+    <section class="panel"><div class="panel-head"><div><h2>Browser & Cookie Sessions</h2><p>فقط metadata امن؛ هیچ cookie یا token نمایش داده نمی‌شود</p></div></div><div class="table-wrap"><table><thead><tr><th>Profile</th><th>Session</th><th>اتصال</th><th>Cookie</th><th>Revision</th><th>Expiry</th><th>Heartbeat</th><th>Warm-up</th></tr></thead><tbody id="profiles"></tbody></table></div></section>
+
+    <section class="grid two">
+      <article class="panel"><div class="panel-head"><div><h2>مدل‌ها</h2><p>حجم، موفقیت و latency</p></div></div><div class="table-wrap"><table><thead><tr><th>Model</th><th>Request</th><th>Success</th><th>P50</th><th>P95</th><th>Empty</th></tr></thead><tbody id="models"></tbody></table></div></article>
+      <article class="panel"><div class="panel-head"><div><h2>Tab Pool</h2><p>ظرفیت و lifecycle tabهای مجازی</p></div><span id="pool-badge" class="badge"></span></div><div class="table-wrap"><table><thead><tr><th>Tab</th><th>State</th><th>Profile</th><th>Generate</th><th>Lease</th><th>Age</th><th>Last use</th></tr></thead><tbody id="tabs"></tbody></table></div></article>
+    </section>
+
+    <section class="panel"><div class="panel-head"><div><h2>آخرین رخدادها</h2><p>لیست محدود Redis با retention هفت‌روزه</p></div></div><div id="events" class="events"></div></section>
+    <footer><span id="updated">—</span><span>Auto refresh: 5s</span></footer>
   </main>
-  <script>
-    const text = value => document.createTextNode(String(value));
-    function cell(row, value) {
-      const node = document.createElement('td');
-      node.append(text(value));
-      row.append(node);
-    }
-    function card(key, value) {
-      const node = document.createElement('div');
-      node.className = 'card';
-      const title = document.createElement('strong');
-      title.append(text(key));
-      const body = document.createElement('p');
-      body.append(text(value));
-      node.append(title, body);
-      return node;
-    }
-    async function refresh() {
-      const response = await fetch('/dashboard/data?window=60', { cache: 'no-store' });
-      const data = await response.json();
-      document.querySelector('#updated').textContent =
-        'آخرین بروزرسانی: ' + new Date(data.generatedAt).toLocaleString();
-      const summary = document.querySelector('#summary');
-      summary.replaceChildren(
-        card('Tabهای کل', data.pool.total),
-        card('Tab آماده', data.pool.available),
-        card('Tab اجاره‌شده', data.pool.leased),
-        card('Browser متصل', data.browser.connected ? 'بله' : 'خیر'),
-      );
-      const sessions = document.querySelector('#sessions');
-      sessions.replaceChildren();
-      for (const item of data.browser.browsers) {
-        const row = document.createElement('tr');
-        cell(row, item.browserId);
-        cell(row, item.authUser);
-        cell(row, item.sessionState);
-        cell(row, item.ready ? 'بله' : 'خیر');
-        cell(row, item.pendingJobs);
-        cell(row, Number(item.heartbeatAgeSeconds).toFixed(1) + 's');
-        sessions.append(row);
-      }
-      if (data.browserError) {
-        document.querySelector('#updated').textContent += ' — ' + data.browserError;
-      }
-      document.querySelector('#metrics').textContent =
-        JSON.stringify(data.metrics.aggregate, null, 2);
-    }
-    refresh().catch(error => {
-      document.querySelector('#updated').textContent = 'خطا: ' + error.message;
-    });
-    setInterval(refresh, 5000);
-  </script>
+  <script src="/dashboard/assets/app.js" defer></script>
 </body>
-</html>`
+</html>`)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 )
@@ -146,7 +147,7 @@ func (t *Tab) Generate(ctx context.Context, input GenerateInput, onChunk func(an
 		}
 		body, _ := ReadBody(response)
 		response.Body.Close()
-		if !retryableStatus(response.StatusCode) || attempt == 4 {
+		if !retryableGenerateStatus(response.StatusCode) || attempt == 4 {
 			return GenerateResult{}, &ClientError{Message: fmt.Sprintf("GenerateContent failed with HTTP %d", response.StatusCode), Phase: "RPC", Status: response.StatusCode, ResponseBody: body}
 		}
 		time.Sleep(time.Duration(attempt+1) * 150 * time.Millisecond)
@@ -166,10 +167,16 @@ func mergeHeaders(base, override map[string]string) map[string]string {
 func retryableStatus(status int) bool {
 	return status == 408 || status == 429 || status == 500 || status == 502 || status == 503 || status == 504
 }
+
+func retryableGenerateStatus(status int) bool {
+	return status != http.StatusTooManyRequests && retryableStatus(status)
+}
 func InvalidatesTab(err error) bool {
 	value, ok := err.(*ClientError)
 	if !ok {
 		return false
 	}
-	return value.Status == 401 || value.Status == 403 || (value.Phase == "ATTESTATION" && (strings.Contains(value.ResponseBody, "differs from container Chrome") || strings.Contains(value.ResponseBody, "Container browser session differs")))
+	return value.Status == 401 || value.Status == 403 || (value.Phase == "ATTESTATION" && (strings.Contains(value.ResponseBody, "differs from container Chrome") ||
+		strings.Contains(value.ResponseBody, "Container browser session differs") ||
+		strings.Contains(value.ResponseBody, "No native provider was accepted")))
 }

@@ -27,7 +27,15 @@ func (s *Server) Handler() http.Handler {
 	return mux
 }
 func (s *Server) health(writer http.ResponseWriter, request *http.Request) {
-	writeJSON(writer, http.StatusOK, map[string]any{"ok": true, "service": "gencontent", "pool": s.pool.Stats(request.Context())})
+	result, err := s.service.Health(request.Context())
+	if err != nil {
+		result["ok"] = false
+		result["error"] = err.Error()
+		writeJSON(writer, http.StatusServiceUnavailable, result)
+		return
+	}
+	result["ok"] = true
+	writeJSON(writer, http.StatusOK, result)
 }
 func (s *Server) legacy(writer http.ResponseWriter, request *http.Request) {
 	if request.Method != "POST" {

@@ -398,9 +398,9 @@ const filePart = [null, null, null, null, null, [uploadedFileId]];
 | Authorization/header composition | خیر | client state، با origin مشخص |
 | bootstrap HTTP | خیر، در client ممکن است | document/runtime config |
 | Chrome runtime/transport observation | بله | profile identity واقعی |
+| native warm-up ثابت | بله، یک‌بار هنگام boot | آماده‌سازی provider؛ مستقل از payload caller |
 | lifecycle token snapshot | بله، پشت Token Factory | contract staging |
 | GenerateContent HTTP | خیر، بعد از دریافت context معتبر | client transport |
-| same-browser probe | فقط diagnostic | isolate کردن خطای token/context |
 | Drive upload | خیر، اما OAuth/account context لازم دارد | HTTP API کمکی |
 
 ## ارجاع و وضعیت پیاده‌سازی

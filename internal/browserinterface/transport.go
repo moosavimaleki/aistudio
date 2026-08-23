@@ -18,6 +18,7 @@ var rpcIdentityHeaders = map[string]bool{
 	"sec-ch-ua-platform-version": true, "sec-ch-ua-wow64": true,
 	"x-browser-channel": true, "x-browser-copyright": true,
 	"x-browser-validation": true, "x-browser-year": true, "x-client-data": true,
+	"x-aistudio-g1-tier": true,
 }
 
 func (s *ChromeSession) waitForRPCIdentity(ctx context.Context) error {

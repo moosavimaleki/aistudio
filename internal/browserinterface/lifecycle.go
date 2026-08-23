@@ -8,7 +8,6 @@ import (
 
 	"github.com/chromedp/cdproto/cdp"
 	"github.com/chromedp/cdproto/fetch"
-	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
 )
 
@@ -62,13 +61,13 @@ func (s *ChromeSession) captureNativeGenerate(event *fetch.EventRequestPaused) {
 			return
 		}
 		commandContext := cdp.WithExecutor(s.ctx, executor.Target)
-		_ = fetch.FailRequest(event.RequestID, network.ErrorReasonBlockedByClient).Do(commandContext)
+		continueErr := fetch.ContinueRequest(event.RequestID).Do(commandContext)
 		s.primeMu.Lock()
 		result := s.primeResult
 		s.primeMu.Unlock()
 		if result != nil {
 			select {
-			case result <- nil:
+			case result <- continueErr:
 			default:
 			}
 		}
