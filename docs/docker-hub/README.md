@@ -20,10 +20,10 @@ Factory, and GenerateContent in one container. Redis is the only side service.
 ## نمونه کامل Docker Compose / Complete Docker Compose example
 
 اتصال به proxy آزمایشگاه الزامی است. پیش از اجرا مطمئن شوید proxy میزبان روی
-`0.0.0.0:10810` فعال است و فقط به staging می‌رود.
+`0.0.0.0:10811` فعال است و فقط به staging می‌رود.
 
 The lab proxy is required. Before starting, verify that the host proxy is
-available at `0.0.0.0:10810` and routes exclusively to staging.
+available at `0.0.0.0:10811` and routes exclusively to staging.
 
 ```yaml
 services:
@@ -45,8 +45,8 @@ services:
       REDIS_URL: "redis://redis:6379/0"
 
       # REQUIRED: both must point to the staging lab proxy
-      LAB_PROXY_URL: "http://host.docker.internal:10810"
-      AISTUDIO_PROXY_URL: "http://host.docker.internal:10810"
+      LAB_PROXY_URL: "http://host.docker.internal:10811"
+      AISTUDIO_PROXY_URL: "http://host.docker.internal:10811"
 
       # AI Studio profile settings
       AISTUDIO_MODEL: "models/gemini-3.5-flash-lite"
@@ -97,24 +97,38 @@ volumes:
 
 ## راهنمای فارسی
 
-### ۱. پیش‌نیازها
+### ۱. نصب Docker و آماده‌سازی proxy
 
-- فقط از session و endpointهای staging استفاده کنید.
-- proxy آزمایشگاه باید روی میزبان فعال باشد و production را route نکند.
-- Docker و Docker Compose باید نصب باشند.
-- یک فایل Netscape cookie معتبر در `COOKIES/*.txt` قرار دهید.
-- پوشه `COOKIES` باید برای کانتینر قابل‌نوشتن باشد، چون Chrome ممکن است
-  cookieهای rotate‌شده را در همان فایل ذخیره کند.
+- Docker و Docker Compose را نصب کنید.
+- proxy آزمایشگاه را روی میزبان، روی `0.0.0.0:10811`، بالا بیاورید.
+- مطمئن شوید proxy فقط به staging route می‌کند و به production وصل نمی‌شود.
 
-هر فایل cookie یک profile مستقل می‌سازد. فایل اول `default`، فایل دوم
-`browser2` و فایل سوم `browser3` است. برای انتخاب فایل دوم:
+### ۲. استخراج Cookie از Chrome
+
+۱. در Chrome وارد حساب آزمایشگاهی AI Studio شوید و مطمئن شوید صفحهٔ
+   `https://aistudio.google.com` بدون redirect به صفحهٔ ورود باز می‌شود.
+۲. افزونهٔ [Get cookies.txt LOCALLY](https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc)
+   را از Chrome Web Store نصب کنید.
+۳. در همان تب AI Studio، روی آیکن افزونه کلیک کنید و خروجی را با قالب
+   **Netscape HTTP Cookie File** ذخیره کنید.
+۴. فایل خروجی را با پسوند `.txt` داخل پوشهٔ `COOKIES/` پروژه قرار دهید؛ برای
+   نمونه `COOKIES/work.txt` یا `COOKIES/work2.txt`.
+۵. فایل Cookie را commit، publish یا در logها چاپ نکنید. این فایل معادل session
+   مرورگر است و باید فقط برای staging استفاده شود.
+
+هر فایل Cookie یک profile مستقل می‌سازد. فایل اول `default`، فایل دوم
+`browser2` و فایل سوم `browser3` است. پوشهٔ `COOKIES` باید برای کانتینر
+قابل‌نوشتن باشد، چون Chrome ممکن است Cookieهای rotate‌شده را در همان فایل
+ذخیره کند.
+
+برای انتخاب فایل دوم:
 
 ```yaml
 AISTUDIO_DEFAULT_BROWSER_ID: "browser2"
 AISTUDIO_AUTH_USER2: "0"
 ```
 
-### ۲. اجرا و بررسی
+### ۳. اجرا و بررسی
 
 فایل بالا را با نام `compose.yaml` ذخیره و اجرا کنید:
 
@@ -135,14 +149,24 @@ curl http://127.0.0.1:3346/health
 
 ## English guide
 
-### 1. Prerequisites
+### 1. Install Docker and prepare the proxy
 
-- Use staging sessions and staging endpoints only.
-- The lab proxy must be running on the host and must never route to production.
 - Install Docker and Docker Compose.
-- Put a valid Netscape cookie file in `COOKIES/*.txt`.
-- Keep the `COOKIES` mount writable because Chrome may persist rotated cookies
-  back to the same Netscape file.
+- Start the lab proxy on the host at `0.0.0.0:10811`.
+- Verify that the proxy routes only to staging and never to production.
+
+### 2. Export cookies from Chrome
+
+1. Sign in to the laboratory AI Studio account in Chrome and verify that
+   `https://aistudio.google.com` opens without redirecting to sign-in.
+2. Install [Get cookies.txt LOCALLY](https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc)
+   from the Chrome Web Store.
+3. On the AI Studio tab, click the extension icon and export the cookies in
+   **Netscape HTTP Cookie File** format.
+4. Put the exported `.txt` file in the project `COOKIES/` directory, for
+   example `COOKIES/work.txt` or `COOKIES/work2.txt`.
+5. Never commit, publish, or print the cookie file in logs. It represents the
+   browser session and is staging-only.
 
 Each cookie file creates an independent browser profile. The first file is
 `default`, the second is `browser2`, and the third is `browser3`. To select the
@@ -153,7 +177,7 @@ AISTUDIO_DEFAULT_BROWSER_ID: "browser2"
 AISTUDIO_AUTH_USER2: "0"
 ```
 
-### 2. Start and verify
+### 3. Start and verify
 
 Save the complete example above as `compose.yaml`, then run:
 

@@ -1,8 +1,21 @@
-``# فایل‌های session مرورگر
+# فایل‌های session مرورگر
 
 در این پوشه برای هر حساب AI Studio یک فایل cookie با قالب
 **Netscape HTTP Cookie File** و پسوند `.txt` قرار دهید. این فایل‌ها secret
 هستند و نباید commit یا منتشر شوند.
+
+## ساخت فایل Cookie
+
+۱. در Chrome وارد حساب آزمایشگاهی AI Studio شوید و به
+`https://aistudio.google.com` بروید.
+۲. افزونهٔ [Get cookies.txt LOCALLY](https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc)
+را نصب کنید.
+۳. روی آیکن افزونه کلیک کنید و خروجی را با قالب **Netscape HTTP Cookie File**
+ذخیره کنید.
+۴. فایل `.txt` را همین‌جا قرار دهید؛ مثلاً `work.txt` یا `work2.txt`.
+
+فایل Cookie شامل session حساب است؛ آن را commit، share یا در log چاپ نکنید.
+فقط Cookieهای staging آزمایشگاه را در این پوشه قرار دهید.
 
 نمونهٔ ساختار فایل:
 
