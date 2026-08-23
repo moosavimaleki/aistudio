@@ -24,6 +24,18 @@ var bundles = map[string][]string{
 		"content/page-channel.js",
 		"content/main.js",
 	},
+	"chatgpt-page.js": {
+		"shared/protocol.js",
+		"chatgpt/sse.js",
+		"chatgpt/page.js",
+	},
+	"chatgpt-content.js": {
+		"shared/protocol.js",
+		"content/keep-alive.js",
+		"chatgpt/channel.js",
+		"chatgpt/composer.js",
+		"chatgpt/content.js",
+	},
 }
 
 func Build(source string, upstream aistudio.Upstream) error {

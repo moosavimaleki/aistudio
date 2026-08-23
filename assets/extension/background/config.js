@@ -7,5 +7,6 @@
     browserId: source.browserId || "default",
     factoryOrigin: source.factoryOrigin || "http://127.0.0.1:3345",
     pageMatch: source.pageMatch,
+    chatgptPageMatch: source.chatgptPageMatch || "https://chatgpt.com/*",
   });
 })();

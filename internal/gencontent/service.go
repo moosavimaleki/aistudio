@@ -16,9 +16,9 @@ import (
 )
 
 type BrowserProfile struct {
-	Slot             int
-	ID, AuthUser     string
-	Connected, Ready bool
+	Slot                   int
+	ID, Provider, AuthUser string
+	Connected, Ready       bool
 }
 type Service struct {
 	settings        aistudio.Settings
@@ -57,6 +57,7 @@ func (s *Service) profiles(ctx context.Context) ([]BrowserProfile, error) {
 	var body struct {
 		Browsers []struct {
 			ID        string `json:"browserId"`
+			Provider  string `json:"provider"`
 			AuthUser  string `json:"authUser"`
 			Connected bool   `json:"connected"`
 			Ready     bool   `json:"ready"`
@@ -69,8 +70,13 @@ func (s *Service) profiles(ctx context.Context) ([]BrowserProfile, error) {
 		return nil, fmt.Errorf("Cannot read browser profiles: HTTP %d", response.StatusCode)
 	}
 	items := make([]BrowserProfile, 0, len(body.Browsers))
-	for index, item := range body.Browsers {
-		items = append(items, BrowserProfile{Slot: index + 1, ID: item.ID, AuthUser: item.AuthUser, Connected: item.Connected, Ready: item.Ready})
+	slot := 0
+	for _, item := range body.Browsers {
+		if item.Provider != "" && item.Provider != "aistudio" {
+			continue
+		}
+		slot++
+		items = append(items, BrowserProfile{Slot: slot, ID: item.ID, Provider: item.Provider, AuthUser: item.AuthUser, Connected: item.Connected, Ready: item.Ready})
 	}
 	return items, nil
 }

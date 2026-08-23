@@ -8,7 +8,7 @@ from vertex_client import generate_content, print_result, thinking
 
 for i in range(1):
     response = generate_content(
-        "gemini-3.7-flash",
+        "gemini-3.5-flash",
         {
             "systemInstruction": {
                 # هر instruction نیز مانند Content از parts تشکیل می‌شود.

@@ -13,8 +13,10 @@ func TestBuild(t *testing.T) {
 	source := t.TempDir()
 	writeFixture(t, source, "manifest.template.json",
 		`{"matches":["__AISTUDIO_MATCH__"],"hosts":["__AISTUDIO_GOOGLE_PERMISSION__"]}`)
-	for _, name := range append(bundles["page.js"], bundles["content.js"]...) {
-		writeFixture(t, source, name, "// "+name)
+	for _, inputs := range bundles {
+		for _, name := range inputs {
+			writeFixture(t, source, name, "// "+name)
+		}
 	}
 
 	upstream := aistudio.Upstream{
@@ -38,6 +40,7 @@ func TestBuild(t *testing.T) {
 	assertContains(t, filepath.Join(source, "manifest.json"), "https://*.google.com/*")
 	assertContains(t, filepath.Join(source, "dist/page.js"), "AISTUDIO_UPSTREAM_CONFIG")
 	assertContains(t, filepath.Join(source, "dist/content.js"), "// content/main.js")
+	assertContains(t, filepath.Join(source, "dist/chatgpt-page.js"), "// chatgpt/sse.js")
 }
 
 func writeFixture(t *testing.T, root, name, content string) {

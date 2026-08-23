@@ -1,6 +1,7 @@
 package browserinterface
 
 import (
+	"context"
 	"fmt"
 	"github.com/hamed/aistudio-api/internal/aistudio"
 	"sync"
@@ -29,7 +30,17 @@ func NewBroker() *Broker {
 	return &Broker{jobs: map[string]*Job{}, heartbeats: map[string]time.Time{}, timeout: 60 * time.Second, redispatch: 10 * time.Second}
 }
 func (b *Broker) Request(payload map[string]any, browserID string) (map[string]any, error) {
-	job := &Job{ID: fmt.Sprintf("job-%d", time.Now().UnixNano()), BrowserID: browserID, Payload: payload, result: make(chan jobResult, 1)}
+	ctx, cancel := context.WithTimeout(context.Background(), b.timeout)
+	defer cancel()
+	return b.RequestContext(ctx, payload, browserID)
+}
+
+func (b *Broker) RequestContext(ctx context.Context, payload map[string]any, browserID string) (map[string]any, error) {
+	return b.RequestContextWithID(ctx, fmt.Sprintf("job-%d", time.Now().UnixNano()), payload, browserID)
+}
+
+func (b *Broker) RequestContextWithID(ctx context.Context, jobID string, payload map[string]any, browserID string) (map[string]any, error) {
+	job := &Job{ID: jobID, BrowserID: browserID, Payload: payload, result: make(chan jobResult, 1)}
 	b.mu.Lock()
 	b.jobs[job.ID] = job
 	b.mu.Unlock()
@@ -37,8 +48,8 @@ func (b *Broker) Request(payload map[string]any, browserID string) (map[string]a
 	select {
 	case result := <-job.result:
 		return result.value, result.err
-	case <-time.After(b.timeout):
-		return nil, fmt.Errorf("Container extension did not return a token before timeout")
+	case <-ctx.Done():
+		return nil, fmt.Errorf("Container extension job did not finish: %w", ctx.Err())
 	}
 }
 func (b *Broker) Next(browserID string) *Job {

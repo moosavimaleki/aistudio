@@ -19,8 +19,9 @@ const factory = globalThis.AIStudioFactoryClient.createFactoryClient(
 );
 const page = globalThis.AIStudioPageClient.createPageClient(
   chrome,
-  protocol.jobMessage,
+  protocol,
   config.pageMatch,
+  config.chatgptPageMatch,
 );
 
 globalThis.AIStudioWorker.startWorker({ chromeApi: chrome, factory, page, protocol });

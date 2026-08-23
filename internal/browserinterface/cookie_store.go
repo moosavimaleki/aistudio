@@ -12,6 +12,10 @@ import (
 )
 
 func persistCookieFile(path string, cookies []*network.Cookie) error {
+	return persistDomainCookieFile(path, cookies, "google.com")
+}
+
+func persistDomainCookieFile(path string, cookies []*network.Cookie, hostname string) error {
 	records := make([][]string, 0, len(cookies))
 	for _, cookie := range cookies {
 		domain := strings.ToLower(strings.TrimSpace(cookie.Domain))
@@ -19,7 +23,7 @@ func persistCookieFile(path string, cookies []*network.Cookie) error {
 		if cookie.Name == "" || cookie.Value == "" || strings.HasPrefix(cookie.Name, "__Host-") {
 			continue
 		}
-		if normalized != "google.com" && !strings.HasSuffix(normalized, ".google.com") {
+		if normalized != hostname && !strings.HasSuffix(normalized, "."+hostname) {
 			continue
 		}
 		outputDomain := domain

@@ -1,12 +1,13 @@
 {
   "manifest_version": 3,
   "name": "AI Studio Container Token Bridge",
-  "version": "0.1.0",
+  "version": "0.2.6",
   "description": "Internal staging bridge between the container Chrome and Token Factory",
   "permissions": ["tabs"],
   "host_permissions": [
     "http://127.0.0.1:3345/*",
-    "__AISTUDIO_GOOGLE_PERMISSION__"
+    "__AISTUDIO_GOOGLE_PERMISSION__",
+    "https://chatgpt.com/*"
   ],
   "background": {
     "service_worker": "background/entry.js"
@@ -21,6 +22,17 @@
     {
       "matches": ["__AISTUDIO_MATCH__"],
       "js": ["dist/content.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["https://chatgpt.com/*"],
+      "js": ["dist/chatgpt-page.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://chatgpt.com/*"],
+      "js": ["dist/chatgpt-content.js"],
       "run_at": "document_start"
     }
   ]

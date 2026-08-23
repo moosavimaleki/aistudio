@@ -12,20 +12,43 @@ type Server struct {
 	fleet  *Fleet
 	broker *Broker
 	tokens *TokenService
+	chat   *ChatService
 }
 
 func NewServer(fleet *Fleet, broker *Broker) *Server {
-	return &Server{fleet: fleet, broker: broker, tokens: NewTokenService(broker, fleet)}
+	return &Server{fleet: fleet, broker: broker, tokens: NewTokenService(broker, fleet), chat: NewChatService(broker, fleet)}
 }
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", s.health)
 	mux.HandleFunc("/bootstrap", s.bootstrap)
 	mux.HandleFunc("/get-token", s.token)
+	mux.HandleFunc("/internal/chatgpt/generate", s.chatGenerate)
 	mux.HandleFunc("/internal/browsers/", s.resetBrowser)
 	mux.HandleFunc("/internal/jobs/next", s.next)
 	mux.HandleFunc("/internal/jobs/", s.complete)
 	return mux
+}
+
+func (s *Server) chatGenerate(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodPost {
+		writer.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	body, ok := decodeBody(writer, request)
+	if !ok {
+		return
+	}
+	result, err := s.chat.Generate(request.Context(), stringValue(body["browserId"]), stringValue(body["prompt"]))
+	if err != nil {
+		status := http.StatusBadGateway
+		if strings.Contains(err.Error(), "deadline exceeded") {
+			status = http.StatusGatewayTimeout
+		}
+		writeError(writer, status, err)
+		return
+	}
+	writeJSON(writer, http.StatusOK, result)
 }
 func (s *Server) resetBrowser(writer http.ResponseWriter, request *http.Request) {
 	if request.Method != http.MethodPost || !strings.HasSuffix(request.URL.Path, "/reset") {
@@ -118,6 +141,7 @@ func (s *Server) next(writer http.ResponseWriter, request *http.Request) {
 		writer.WriteHeader(http.StatusNoContent)
 		return
 	}
+	log.Printf("extension job dispatched id=%s browser=%s kind=%s hasSubmitNonce=%t", job.ID, id, stringValue(job.Payload["kind"]), stringValue(job.Payload["submitNonce"]) != "")
 	payload := map[string]any{"id": job.ID}
 	for name, value := range job.Payload {
 		payload[name] = value
@@ -143,6 +167,7 @@ func (s *Server) complete(writer http.ResponseWriter, request *http.Request) {
 		writeError(writer, http.StatusNotFound, fmtError("job is no longer pending"))
 		return
 	}
+	log.Printf("extension job completed id=%s browser=%s error=%t upstreamStatus=%s", id, browserID, stringValue(body["error"]) != "", stringValue(body["upstreamStatus"]))
 	writer.WriteHeader(http.StatusNoContent)
 }
 func decodeBody(writer http.ResponseWriter, request *http.Request) (map[string]any, bool) {

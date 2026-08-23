@@ -11,4 +11,5 @@ node_modules/
 aistudio.google.com-*
 .idea
 COOKIES/*.txt
+CHATGPT_COOKIES/*.txt
 config/xray.aistudio.local.json

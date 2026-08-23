@@ -33,7 +33,13 @@ func (f *Fleet) Start() error {
 func (f *Fleet) Warm() {
 	for _, spec := range f.config.Browsers {
 		session := f.sessions[spec.ID]
-		if _, err := session.Prepare(spec.CookieHeader, spec.AuthUser); err != nil {
+		var err error
+		if spec.Provider == ProviderChatGPT {
+			err = session.PrepareChatGPT()
+		} else {
+			_, err = session.Prepare(spec.CookieHeader, spec.AuthUser)
+		}
+		if err != nil {
 			f.mu.Lock()
 			f.warmErrors[spec.ID] = err.Error()
 			f.mu.Unlock()
@@ -56,7 +62,12 @@ func (f *Fleet) Reset(id string) error {
 		f.setWarmError(spec.ID, err)
 		return err
 	}
-	if _, err := session.Prepare(spec.CookieHeader, spec.AuthUser); err != nil {
+	if spec.Provider == ProviderChatGPT {
+		err = session.PrepareChatGPT()
+	} else {
+		_, err = session.Prepare(spec.CookieHeader, spec.AuthUser)
+	}
+	if err != nil {
 		f.setWarmError(spec.ID, err)
 		return err
 	}
@@ -79,6 +90,20 @@ func (f *Fleet) Resolve(id string) (string, error) {
 	}
 	if _, ok := f.sessions[id]; !ok {
 		return "", fmt.Errorf("Unknown browserId: %s", id)
+	}
+	return id, nil
+}
+
+func (f *Fleet) ResolveChatGPT(id string) (string, error) {
+	if id == "" {
+		id = f.config.ChatGPTDefaultID
+	}
+	if id == "" {
+		return "", fmt.Errorf("No ChatGPT browser profile is configured")
+	}
+	session := f.sessions[id]
+	if session == nil || session.Spec().Provider != ProviderChatGPT {
+		return "", fmt.Errorf("Unknown ChatGPT browserId: %s", id)
 	}
 	return id, nil
 }
@@ -109,7 +134,7 @@ func (f *Fleet) Status() []map[string]any {
 		f.mu.Unlock()
 		ready := session.Ready()
 		cookies := session.CookieDiagnostics()
-		items = append(items, map[string]any{"browserId": spec.ID, "authUser": spec.AuthUser, "connected": health["connected"], "pendingJobs": health["pendingJobs"], "heartbeatAgeSeconds": health["heartbeatAgeSeconds"], "ready": ready, "sessionState": sessionState(ready, health), "warmError": warmError, "cookieCount": cookies.Count, "authCookieCount": cookies.AuthCount, "cookieRevision": cookies.Revision, "cookieSourceCurrent": cookies.SourceCurrent})
+		items = append(items, map[string]any{"browserId": spec.ID, "provider": spec.Provider, "authUser": spec.AuthUser, "connected": health["connected"], "pendingJobs": health["pendingJobs"], "heartbeatAgeSeconds": health["heartbeatAgeSeconds"], "ready": ready, "sessionState": sessionState(ready, health), "warmError": warmError, "cookieCount": cookies.Count, "authCookieCount": cookies.AuthCount, "cookieRevision": cookies.Revision, "cookieSourceCurrent": cookies.SourceCurrent})
 	}
 	return items
 }

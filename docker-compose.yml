@@ -17,6 +17,7 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./COOKIES:/app/cookies
+      - ./CHATGPT_COOKIES:/app/chatgpt-cookies
       - browser_profiles:/app/browser-profiles
     group_add:
       - "${COOKIE_WRITER_GID:-1000}"

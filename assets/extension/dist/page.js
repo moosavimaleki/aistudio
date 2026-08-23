@@ -8,6 +8,10 @@ globalThis.AISTUDIO_UPSTREAM_CONFIG = {"apiKeyProperty":"WIu0Nc","attestationEnt
     requestSource: "aistudio-container-token-bridge-extension",
     responseSource: "aistudio-container-token-bridge-page",
     jobMessage: "AISTUDIO_CONTAINER_TOKEN_JOB",
+    chatJobKind: "chatgpt.generate",
+    chatJobMessage: "CHATGPT_CONTAINER_CHAT_JOB",
+    chatRequestSource: "chatgpt-container-bridge-extension",
+    chatResponseSource: "chatgpt-container-bridge-page",
     keepAlivePort: "aistudio-container-bridge-keepalive",
   });
 

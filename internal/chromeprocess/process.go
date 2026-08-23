@@ -98,7 +98,7 @@ func copyExtension(source, target, browserID string) error {
 	if err != nil {
 		return err
 	}
-	config, _ := json.Marshal(map[string]string{"browserId": browserID, "factoryOrigin": defaultValue(os.Getenv("FACTORY_ORIGIN"), "http://127.0.0.1:3345"), "pageMatch": upstream.AIStudio["origin"] + "/*"})
+	config, _ := json.Marshal(map[string]string{"browserId": browserID, "factoryOrigin": defaultValue(os.Getenv("FACTORY_ORIGIN"), "http://127.0.0.1:3345"), "pageMatch": upstream.AIStudio["origin"] + "/*", "chatgptPageMatch": "https://chatgpt.com/*"})
 	return os.WriteFile(filepath.Join(target, "config", "runtime-config.js"), []byte("globalThis.AISTUDIO_BRIDGE_CONFIG = "+string(config)+";\n"), 0644)
 }
 func defaultValue(value, fallback string) string {

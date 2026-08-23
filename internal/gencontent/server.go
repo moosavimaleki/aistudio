@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/hamed/aistudio-api/internal/aistudio"
+	"github.com/hamed/aistudio-api/internal/chatgptweb"
 	"net/http"
+	"os"
 	"strings"
 )
 
@@ -13,16 +15,26 @@ type Server struct {
 	service   *Service
 	pool      *Pool
 	dashboard *Dashboard
+	chat      chatCompleter
+}
+
+type chatCompleter interface {
+	Generate(context.Context, string, string) (chatgptweb.Result, error)
 }
 
 func NewServer(service *Service, pool *Pool, dashboard *Dashboard) *Server {
-	return &Server{service: service, pool: pool, dashboard: dashboard}
+	factoryOrigin := os.Getenv("FACTORY_ORIGIN")
+	if factoryOrigin == "" {
+		factoryOrigin = "http://127.0.0.1:3345"
+	}
+	return &Server{service: service, pool: pool, dashboard: dashboard, chat: chatgptweb.NewClient(factoryOrigin)}
 }
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	s.dashboard.Register(mux)
 	mux.HandleFunc("/health", s.health)
 	mux.HandleFunc("/generate-content", s.legacy)
+	mux.HandleFunc("/v1/chat/completions", s.chatCompletions)
 	mux.HandleFunc("/v1/projects/", s.vertex)
 	return mux
 }

@@ -2,7 +2,10 @@ package browserinterface
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"log"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -11,27 +14,35 @@ import (
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
+	"github.com/chromedp/chromedp/kb"
 	"github.com/hamed/aistudio-api/internal/aistudio"
 	"github.com/hamed/aistudio-api/internal/chromeprocess"
 )
 
 type ChromeSession struct {
-	spec        BrowserSpec
-	port        int
-	broker      *Broker
-	process     *chromeprocess.Process
-	ctx         context.Context
-	cancel      context.CancelFunc
-	mu          sync.Mutex
-	stateMu     sync.RWMutex
-	headersMu   sync.RWMutex
-	primeMu     sync.Mutex
-	primeResult chan error
-	fingerprint string
-	runtime     aistudio.RuntimeConfig
-	profile     map[string]string
-	cookies     []aistudio.CookieRecord
-	headers     map[string]string
+	spec          BrowserSpec
+	port          int
+	broker        *Broker
+	process       *chromeprocess.Process
+	browserCtx    context.Context
+	browserCancel context.CancelFunc
+	ctx           context.Context
+	cancel        context.CancelFunc
+	mu            sync.Mutex
+	chatMu        sync.Mutex
+	chatCtx       context.Context
+	chatCancel    context.CancelFunc
+	stateMu       sync.RWMutex
+	headersMu     sync.RWMutex
+	primeMu       sync.Mutex
+	primeResult   chan error
+	fingerprint   string
+	runtime       aistudio.RuntimeConfig
+	profile       map[string]string
+	cookies       []aistudio.CookieRecord
+	headers       map[string]string
+	providerReady bool
+	chatRequests  sync.Map
 }
 
 func NewChromeSession(spec BrowserSpec, port int, broker *Broker) *ChromeSession {
@@ -44,11 +55,15 @@ func (s *ChromeSession) Start() error {
 	if err := s.process.Start(); err != nil {
 		return err
 	}
-	allocator, allocatorCancel := chromedp.NewRemoteAllocator(context.Background(), s.process.CDPURL())
-	s.ctx, s.cancel = chromedp.NewContext(allocator)
+	s.browserCtx, s.browserCancel = chromedp.NewRemoteAllocator(context.Background(), s.process.CDPURL())
+	s.ctx, s.cancel = chromedp.NewContext(s.browserCtx)
 	chromedp.ListenTarget(s.ctx, func(event any) {
 		switch request := event.(type) {
 		case *network.EventRequestWillBeSent:
+			if path := chatConversationPath(request.Request.URL); path != "" {
+				s.chatRequests.Store(request.RequestID, path)
+				log.Printf("ChatGPT page conversation request browser=%s path=%s hasPostData=%t", s.spec.ID, path, request.Request.HasPostData)
+			}
 			if strings.Contains(request.Request.URL, "MakerSuiteService/") {
 				s.captureHeaders(request.Request.Headers)
 			}
@@ -58,12 +73,34 @@ func (s *ChromeSession) Start() error {
 			}
 		case *fetch.EventRequestPaused:
 			s.captureNativeGenerate(request)
+		case *network.EventResponseReceived:
+			if path := chatConversationPath(request.Response.URL); path != "" {
+				s.chatRequests.Delete(request.RequestID)
+				log.Printf("ChatGPT page conversation response browser=%s path=%s status=%d", s.spec.ID, path, request.Response.Status)
+			}
+		case *network.EventLoadingFailed:
+			if value, ok := s.chatRequests.LoadAndDelete(request.RequestID); ok {
+				log.Printf("ChatGPT page conversation failed browser=%s path=%s canceled=%t error=%s", s.spec.ID, value, request.Canceled, request.ErrorText)
+			}
 		}
 	})
-	_ = allocatorCancel
 	return chromedp.Run(s.ctx, network.Enable())
 }
+
+func chatConversationPath(rawURL string) string {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+	if parsed.Path == "/backend-api/f/conversation" || parsed.Path == "/backend-anon/f/conversation" {
+		return parsed.Path
+	}
+	return ""
+}
 func (s *ChromeSession) Prepare(cookies, authUser string) (map[string]any, error) {
+	if s.spec.Provider != "" && s.spec.Provider != ProviderAIStudio {
+		return nil, fmt.Errorf("browser %s is not an AI Studio profile", s.spec.ID)
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := s.Start(); err != nil {
@@ -159,6 +196,172 @@ func (s *ChromeSession) Prepare(cookies, authUser string) (map[string]any, error
 	s.stateMu.Unlock()
 	return s.snapshotLocked()
 }
+
+func (s *ChromeSession) PrepareChatGPT() error {
+	if s.spec.Provider != ProviderChatGPT {
+		return fmt.Errorf("browser %s is not a ChatGPT profile", s.spec.ID)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.Start(); err != nil {
+		return err
+	}
+	if err := s.refreshChatGPTCookies(); err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(s.ctx, 45*time.Second)
+	defer cancel()
+	if err := chromedp.Run(ctx,
+		chromedp.Navigate("https://chatgpt.com/"),
+		chromedp.WaitReady("body", chromedp.ByQuery),
+	); err != nil {
+		return fmt.Errorf("open ChatGPT profile: %w", err)
+	}
+	cookies, err := s.readCookiesForURL("https://chatgpt.com/")
+	if err != nil {
+		return err
+	}
+	records := make([]aistudio.CookieRecord, 0, len(cookies))
+	for _, cookie := range cookies {
+		records = append(records, aistudio.CookieRecord{Name: cookie.Name, Value: cookie.Value})
+	}
+	s.stateMu.Lock()
+	s.cookies = records
+	s.fingerprint = SessionFingerprint(joinCookies(records), ProviderChatGPT)
+	s.providerReady = true
+	s.stateMu.Unlock()
+	return nil
+}
+
+func (s *ChromeSession) RefreshChatGPTCookies() error {
+	if s.spec.ChatGPTCookieFile == "" {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.Start(); err != nil {
+		return err
+	}
+	return s.refreshChatGPTCookies()
+}
+
+func (s *ChromeSession) refreshChatGPTCookies() error {
+	if s.spec.ChatGPTCookieFile == "" {
+		return nil
+	}
+	cookies, err := readNetscapeCookies(s.spec.ChatGPTCookieFile, "chatgpt.com")
+	if err != nil {
+		return err
+	}
+	for _, cookie := range cookies {
+		params := network.SetCookie(cookie.Name, cookie.Value).
+			WithPath(cookie.Path).
+			WithSecure(cookie.Secure).
+			WithHTTPOnly(cookie.HTTPOnly)
+		if strings.HasPrefix(cookie.Name, "__Host-") {
+			params = params.WithURL("https://chatgpt.com/")
+		} else {
+			params = params.WithDomain(cookie.Domain)
+		}
+		if err := chromedp.Run(s.ctx, chromedp.ActionFunc(func(ctx context.Context) error {
+			return params.Do(ctx)
+		})); err != nil {
+			return fmt.Errorf("Chrome did not apply ChatGPT cookie %s: %w", cookie.Name, err)
+		}
+	}
+	return nil
+}
+
+func (s *ChromeSession) PersistChatGPTCookies() error {
+	if s.spec.ChatGPTCookieFile == "" {
+		return nil
+	}
+	pageContext, err := s.chatGPTPageContext()
+	if err != nil {
+		return err
+	}
+	if pageContext == nil {
+		pageContext = s.ctx
+	}
+	cookies, err := s.readCookiesForURLContext(pageContext, "https://chatgpt.com/")
+	if err != nil {
+		return err
+	}
+	return persistDomainCookieFile(s.spec.ChatGPTCookieFile, cookies, "chatgpt.com")
+}
+
+func (s *ChromeSession) PressChatGPTEnter(submitNonce string) error {
+	encodedNonce, err := json.Marshal(submitNonce)
+	if err != nil {
+		return err
+	}
+	// The extension may reload an existing ChatGPT tab before preparing the
+	// composer. Attach after that navigation so CDP observes the live document.
+	time.Sleep(2 * time.Second)
+	predicate := fmt.Sprintf(`document.querySelector("#prompt-textarea")?.dataset.aistudioSubmitNonce === %s`, encodedNonce)
+	deadline := time.Now().Add(30 * time.Second)
+	var lastErr error
+	probeLogged := false
+	if targets, err := chromedp.Targets(s.ctx); err == nil {
+		for _, candidate := range targets {
+			log.Printf("ChatGPT submit target browser=%s port=%d type=%s matchesOrigin=%t", s.spec.ID, s.port, candidate.Type, strings.HasPrefix(candidate.URL, "https://chatgpt.com/"))
+		}
+	}
+	for time.Now().Before(deadline) {
+		tabContext, targetErr := s.chatGPTPageContext()
+		if targetErr != nil {
+			lastErr = targetErr
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+		if tabContext == nil {
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+		ctx, cancel := context.WithTimeout(tabContext, time.Until(deadline))
+		var ready bool
+		lastErr = chromedp.Run(ctx, chromedp.Evaluate(predicate, &ready))
+		if !probeLogged {
+			log.Printf("ChatGPT composer probe browser=%s composerContextReady=%t nonceMatches=%t error=%v", s.spec.ID, lastErr == nil, ready, lastErr)
+			probeLogged = true
+		}
+		if lastErr == nil && ready {
+			lastErr = chromedp.Run(ctx,
+				chromedp.Focus("#prompt-textarea", chromedp.ByQuery),
+				chromedp.KeyEvent(kb.Enter),
+			)
+			if lastErr == nil {
+				cancel()
+				return nil
+			}
+		}
+		cancel()
+		time.Sleep(100 * time.Millisecond)
+	}
+	if lastErr == nil {
+		lastErr = context.DeadlineExceeded
+	}
+	return fmt.Errorf("ChatGPT composer did not become ready: %w", lastErr)
+}
+
+func (s *ChromeSession) chatGPTPageContext() (context.Context, error) {
+	s.chatMu.Lock()
+	defer s.chatMu.Unlock()
+	if s.chatCtx != nil {
+		return s.chatCtx, nil
+	}
+	targets, err := chromedp.Targets(s.ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, candidate := range targets {
+		if candidate.Type == "page" && strings.HasPrefix(candidate.URL, "https://chatgpt.com/") {
+			s.chatCtx, s.chatCancel = chromedp.NewContext(s.ctx, chromedp.WithTargetID(candidate.TargetID))
+			return s.chatCtx, nil
+		}
+	}
+	return nil, nil
+}
 func (s *ChromeSession) Snapshot() (map[string]any, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -167,6 +370,9 @@ func (s *ChromeSession) Snapshot() (map[string]any, error) {
 func (s *ChromeSession) Ready() bool {
 	s.stateMu.RLock()
 	defer s.stateMu.RUnlock()
+	if s.spec.Provider == ProviderChatGPT {
+		return s.providerReady
+	}
 	return s.fingerprint != "" &&
 		s.runtime.APIKey != "" &&
 		s.profile["User-Agent"] != "" &&
@@ -208,10 +414,20 @@ func (s *ChromeSession) readCookies() ([]aistudio.CookieRecord, error) {
 	return googleCookieRecords(cookies), nil
 }
 func (s *ChromeSession) readBrowserCookies() ([]*network.Cookie, error) {
+	return s.readCookiesForURL("https://aistudio.google.com/")
+}
+
+func (s *ChromeSession) readCookiesForURL(rawURL string) ([]*network.Cookie, error) {
+	return s.readCookiesForURLContext(s.ctx, rawURL)
+}
+
+func (s *ChromeSession) readCookiesForURLContext(base context.Context, rawURL string) ([]*network.Cookie, error) {
+	ctx, cancel := context.WithTimeout(base, 10*time.Second)
+	defer cancel()
 	var cookies []*network.Cookie
-	err := chromedp.Run(s.ctx, chromedp.ActionFunc(func(ctx context.Context) error {
+	err := chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
 		var readErr error
-		cookies, readErr = network.GetCookies().WithURLs([]string{"https://aistudio.google.com/"}).Do(ctx)
+		cookies, readErr = network.GetCookies().WithURLs([]string{rawURL}).Do(ctx)
 		return readErr
 	}))
 	if err != nil {
@@ -250,9 +466,21 @@ func (s *ChromeSession) currentURL() string {
 func (s *ChromeSession) Close() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.chatMu.Lock()
+	if s.chatCancel != nil {
+		s.chatCancel()
+		s.chatCancel = nil
+		s.chatCtx = nil
+	}
+	s.chatMu.Unlock()
 	if s.cancel != nil {
 		s.cancel()
 		s.cancel = nil
+	}
+	if s.browserCancel != nil {
+		s.browserCancel()
+		s.browserCancel = nil
+		s.browserCtx = nil
 	}
 	s.process.Stop()
 }
@@ -271,6 +499,7 @@ func (s *ChromeSession) Reset() error {
 	s.profile = nil
 	s.cookies = nil
 	s.fingerprint = ""
+	s.providerReady = false
 	s.stateMu.Unlock()
 	s.headersMu.Lock()
 	s.headers = map[string]string{}
