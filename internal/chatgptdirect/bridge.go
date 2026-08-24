@@ -63,8 +63,21 @@ func (b *bridgeClient) prepare(ctx context.Context, input prepareRequest) (Artif
 	if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
 		return Artifacts{}, err
 	}
-	if len(result.Headers) == 0 || len(result.PrepareHeaders) == 0 || result.Cookies == "" {
-		return Artifacts{}, fmt.Errorf("ChatGPT browser preparation returned incomplete transport artifacts")
+	missing := make([]string, 0, 3)
+	if len(result.Headers) == 0 {
+		missing = append(missing, "final headers")
+	}
+	if len(result.PrepareHeaders) == 0 {
+		missing = append(missing, "prepare headers")
+	}
+	if result.Cookies == "" {
+		missing = append(missing, "cookies")
+	}
+	if len(missing) > 0 {
+		return Artifacts{}, fmt.Errorf(
+			"ChatGPT browser preparation returned incomplete transport artifacts: missing %s",
+			strings.Join(missing, ", "),
+		)
 	}
 	return result, nil
 }

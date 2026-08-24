@@ -17,7 +17,8 @@
 python scripts/import_chatgpt_cookies.py --dry-run
 ```
 
-سپس sessionهای سالم را با قالب Netscape و permission برابر `0600` صادر کنید:
+سپس sessionهای سالم را با قالب Netscape و permission برابر `0640` صادر کنید.
+دسترسی group لازم است چون Chrome داخل کانتینر با user جدا ولی group مشترک اجرا می‌شود:
 
 ```bash
 python scripts/import_chatgpt_cookies.py

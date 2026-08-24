@@ -53,7 +53,7 @@ class CookieImportTests(unittest.TestCase):
 
             text = destination.read_text(encoding="utf-8")
             self.assertIn("#HttpOnly_.chatgpt.com\tTRUE\t/\tTRUE\t0\tsession\tsecret-value", text)
-            self.assertEqual(stat.S_IMODE(destination.stat().st_mode), 0o600)
+            self.assertEqual(stat.S_IMODE(destination.stat().st_mode), 0o640)
             with self.assertRaises(FileExistsError):
                 write_netscape(destination, cookies, replace=False)
 

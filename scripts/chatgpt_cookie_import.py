@@ -125,7 +125,8 @@ def write_netscape(path: Path, cookies: CookieJar, replace: bool) -> None:
     fd, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
     temporary = Path(temporary_name)
     try:
-        os.fchmod(fd, 0o600)
+        # The project directory is group-shared with seluser inside Docker.
+        os.fchmod(fd, 0o640)
         with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as output:
             output.write("# Netscape HTTP Cookie File\n")
             output.write("# Generated locally; do not commit or share this file.\n")
@@ -134,7 +135,7 @@ def write_netscape(path: Path, cookies: CookieJar, replace: bool) -> None:
             output.flush()
             os.fsync(output.fileno())
         os.replace(temporary, path)
-        path.chmod(0o600)
+        path.chmod(0o640)
     finally:
         temporary.unlink(missing_ok=True)
 
