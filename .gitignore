@@ -12,4 +12,5 @@ aistudio.google.com-*
 .idea
 COOKIES/*.txt
 CHATGPT_COOKIES/*.txt
+chatgpt_assets/
 config/xray.aistudio.local.json
