@@ -153,6 +153,27 @@ func (s *Service) noUsableProfileError(profiles []BrowserProfile) error {
 	}
 }
 func (s *Service) generateOnce(ctx context.Context, input aistudio.GenerateInput) (map[string]any, error) {
+	profile, err := s.chooseProfile(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return s.generateWithProfile(ctx, input, profile)
+}
+
+func (s *Service) generateForBrowser(ctx context.Context, input aistudio.GenerateInput, browserID string) (map[string]any, error) {
+	profiles, err := s.profiles(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, profile := range profiles {
+		if profile.ID == browserID && profile.Connected && profile.Ready {
+			return s.generateWithProfile(ctx, input, profile)
+		}
+	}
+	return nil, s.noUsableProfileError(profiles)
+}
+
+func (s *Service) generateWithProfile(ctx context.Context, input aistudio.GenerateInput, profile BrowserProfile) (map[string]any, error) {
 	lease, err := s.pool.Acquire(ctx)
 	if err != nil {
 		return nil, err
@@ -163,10 +184,6 @@ func (s *Service) generateOnce(ctx context.Context, input aistudio.GenerateInput
 			_ = s.pool.Discard(context.Background(), lease)
 		}
 	}()
-	profile, err := s.chooseProfile(ctx)
-	if err != nil {
-		return nil, err
-	}
 	settings, err := s.profileSettings(profile)
 	if err != nil {
 		return nil, err

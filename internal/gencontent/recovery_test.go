@@ -51,6 +51,29 @@ func TestResetProfileRejectsFailedRecovery(t *testing.T) {
 	}
 }
 
+func TestResetProfileClearsSuccessfulRecoveryCooldown(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"ok":true}`))
+	}))
+	defer server.Close()
+
+	service := &Service{
+		recoveryURL:     server.URL + "/internal/browsers",
+		recoveryHTTP:    server.Client(),
+		profileFailures: newProfileFailures(),
+	}
+	profile := BrowserProfile{ID: "default", Connected: true, Ready: true}
+	service.profileFailures.Mark(profile, aistudio.ResponseError("RPC", http.StatusForbidden, "stale session"))
+
+	if err := service.resetProfile(context.Background(), profile.ID); err != nil {
+		t.Fatalf("reset profile: %v", err)
+	}
+	if service.profileFailures.Has(profile.ID) {
+		t.Fatal("successfully recovered profile remains quarantined")
+	}
+}
+
 func TestRateLimitedBrowserIsEligibleForFailover(t *testing.T) {
 	err := aistudio.ResponseError("RPC", http.StatusTooManyRequests, "quota exceeded")
 	err.Diagnostics = map[string]any{"browserId": "default"}

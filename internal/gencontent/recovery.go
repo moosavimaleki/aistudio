@@ -37,9 +37,9 @@ func (s *Service) Generate(ctx context.Context, input aistudio.GenerateInput) (m
 			attachRecoveryError(err, recoveryErr)
 			return nil, err
 		}
-		if attempt == 1 {
-			return nil, err
-		}
+		// Reset is synchronous and warms this exact Chrome session. Retry that
+		// profile so another stale profile cannot consume the recovery attempt.
+		return s.generateForBrowser(ctx, input, browserID)
 	}
 	return nil, fmt.Errorf("browser recovery exhausted")
 }
@@ -74,6 +74,9 @@ func (s *Service) resetProfile(ctx context.Context, browserID string) error {
 	}
 	defer response.Body.Close()
 	if response.StatusCode >= 200 && response.StatusCode < 300 {
+		if s.profileFailures != nil {
+			s.profileFailures.Clear(browserID)
+		}
 		return nil
 	}
 	body, _ := io.ReadAll(io.LimitReader(response.Body, 2048))

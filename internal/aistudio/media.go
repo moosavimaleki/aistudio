@@ -1,11 +1,11 @@
 package aistudio
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strings"
 )
@@ -40,11 +40,17 @@ func (t *Tab) UploadBytes(ctx context.Context, content []byte, mimeType, name st
 	}
 	headers := map[string]string{"Authorization": "Bearer " + t.OAuthAccessToken, "Origin": t.Auth.Origin, "Referer": t.Auth.Origin + "/", "X-Goog-AuthUser": t.Runtime.AuthUser, "X-Goog-Encode-Response-If-Executable": "base64", "X-JavaScript-User-Agent": "google-api-javascript-client/1.1.0", "X-Requested-With": "XMLHttpRequest", "User-Agent": t.TransportProfile["User-Agent"]}
 	endpoint := mustValue(upstream.Drive, "upload_url") + "?uploadType=multipart&key=" + url.QueryEscape(t.Runtime.APIKey)
-	boundary := fmt.Sprintf("go-%d", len(content))
 	metadata, _ := json.Marshal(map[string]any{"name": name, "parents": []string{t.AppFolderID}})
-	body := []byte("--" + boundary + "\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n" + string(metadata) + "\r\n--" + boundary + "\r\nContent-Type: " + mimeType + "\r\nContent-Transfer-Encoding: base64\r\n\r\n" + base64.StdEncoding.EncodeToString(content) + "\r\n--" + boundary + "--\r\n")
-	headers["Content-Type"] = "multipart/related; boundary=\"" + boundary + "\""
-	response, err := t.HTTP.Request(ctx, "POST", endpoint, headers, body)
+	var response *http.Response
+	if useResumableUpload(len(content)) {
+		endpoint = strings.Replace(endpoint, "uploadType=multipart", "uploadType=resumable", 1)
+		response, err = t.uploadResumable(ctx, endpoint, headers, metadata, mimeType, content)
+	} else {
+		boundary := fmt.Sprintf("go-%d", len(content))
+		body := []byte("--" + boundary + "\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n" + string(metadata) + "\r\n--" + boundary + "\r\nContent-Type: " + mimeType + "\r\nContent-Transfer-Encoding: base64\r\n\r\n" + base64.StdEncoding.EncodeToString(content) + "\r\n--" + boundary + "--\r\n")
+		headers["Content-Type"] = "multipart/related; boundary=\"" + boundary + "\""
+		response, err = t.HTTP.Request(ctx, "POST", endpoint, headers, body)
+	}
 	if err != nil {
 		return "", err
 	}
@@ -76,5 +82,3 @@ func DecodeInlineData(value string) ([]byte, error) {
 	}
 	return base64.RawURLEncoding.DecodeString(strings.TrimRight(value, "="))
 }
-
-var _ = bytes.NewBuffer
