@@ -1,9 +1,13 @@
 package gencontent
 
 import (
+	"encoding/base64"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/hamed/aistudio-api/internal/chatgptweb"
 )
 
 type imageGenerationRequest struct {
@@ -42,11 +46,14 @@ func (s *Server) imageGenerations(writer http.ResponseWriter, request *http.Requ
 		return
 	}
 	data := make([]any, 0, len(result.Images))
+	mimeTypes := make([]string, 0, len(result.Images))
 	for _, image := range result.Images {
-		if image.Data == "" {
+		mimeType, imageErr := validateGeneratedImage(image)
+		if imageErr != nil {
 			continue
 		}
 		data = append(data, map[string]any{"b64_json": image.Data})
+		mimeTypes = append(mimeTypes, mimeType)
 	}
 	if len(data) == 0 {
 		openAIError(writer, http.StatusBadGateway, "ChatGPT returned no generated image", "browser_bridge_error")
@@ -58,6 +65,26 @@ func (s *Server) imageGenerations(writer http.ResponseWriter, request *http.Requ
 		"requested_model": body.Model,
 		"upstream_status": result.UpstreamStatus,
 		"upstream_path":   result.UpstreamPath,
+		"mime_types":      mimeTypes,
 	}
 	writeJSON(writer, http.StatusOK, map[string]any{"created": time.Now().Unix(), "data": data, "lab_metadata": metadata})
+}
+
+func validateGeneratedImage(image chatgptweb.Image) (string, error) {
+	if image.Data == "" {
+		return "", fmt.Errorf("generated image data is empty")
+	}
+	data, err := base64.StdEncoding.DecodeString(image.Data)
+	if err != nil {
+		return "", fmt.Errorf("decode generated image: %w", err)
+	}
+	detected := http.DetectContentType(data)
+	if !strings.HasPrefix(detected, "image/") {
+		return "", fmt.Errorf("generated asset is not an image: %s", detected)
+	}
+	reported := strings.ToLower(strings.TrimSpace(image.MIMEType))
+	if reported != "" && reported != detected {
+		return "", fmt.Errorf("generated image MIME mismatch: reported=%s detected=%s", reported, detected)
+	}
+	return detected, nil
 }

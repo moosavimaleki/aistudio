@@ -62,7 +62,7 @@ func (s *chatStub) Generate(_ context.Context, prompt, _ string) (chatgptweb.Res
 func (s *chatStub) GenerateImage(_ context.Context, prompt, _ string) (chatgptweb.Result, error) {
 	s.imagePrompt = prompt
 	return chatgptweb.Result{
-		Images:         []chatgptweb.Image{{MIMEType: "image/png", Data: "aW1hZ2U="}},
+		Images:         []chatgptweb.Image{{MIMEType: "image/png", Data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="}},
 		BrowserID:      "chatgpt",
 		ConversationID: "c1",
 		UpstreamStatus: 200,
@@ -122,7 +122,7 @@ func TestOpenAIImageGeneration(t *testing.T) {
 	response := httptest.NewRecorder()
 	server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/images/generations", strings.NewReader(body)))
 
-	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"b64_json":"aW1hZ2U="`) {
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"mime_types":["image/png"]`) {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
 	if !strings.Contains(chat.imagePrompt, "Generate one image") {

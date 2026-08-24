@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	cdptarget "github.com/chromedp/cdproto/target"
 	"github.com/chromedp/chromedp"
 )
 
@@ -43,7 +44,7 @@ func main() {
 	}
 	allocator, cancelAllocator := chromedp.NewRemoteAllocator(context.Background(), webSocket)
 	defer cancelAllocator()
-	ctx, cancel := chromedp.NewContext(allocator, chromedp.WithTargetID(targetID))
+	ctx, cancel := chromedp.NewContext(allocator, chromedp.WithTargetID(cdptarget.ID(targetID)))
 	defer cancel()
 	ctx, timeout := context.WithTimeout(ctx, 10*time.Second)
 	defer timeout()

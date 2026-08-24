@@ -165,11 +165,24 @@
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
       const source = [...document.images]
-        .find((image) => image.naturalWidth >= 64 && !previousSources.has(image.currentSrc))?.currentSrc;
+        .find((image) => isGeneratedImage(image, previousSources))?.currentSrc;
       if (source) return [await readImage(source)];
       await delay(250);
     }
     return [];
+  }
+
+  function isGeneratedImage(image, previousSources) {
+    const source = image.currentSrc || image.src || "";
+    if (!source || previousSources.has(source)) return false;
+    if (image.naturalWidth < 256 || image.naturalHeight < 256) return false;
+    if (image.alt?.trim().toLowerCase().startsWith("generated image")) return true;
+    try {
+      const url = new URL(source, globalThis.location?.href || "https://chatgpt.com/");
+      return url.origin === "https://chatgpt.com" && url.pathname === "/backend-api/estuary/content";
+    } catch (_error) {
+      return false;
+    }
   }
 
   async function readImage(source) {
@@ -236,7 +249,7 @@
 
   const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
-  const api = { ready, prepare, submitProbe, assistantCount, imageSources, readGeneratedImages, readLastAssistant };
+  const api = { ready, prepare, submitProbe, assistantCount, imageSources, isGeneratedImage, readGeneratedImages, readLastAssistant };
   globalThis.ChatGPTComposer = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })();

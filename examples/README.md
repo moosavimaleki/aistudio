@@ -48,13 +48,13 @@ python examples/chatgpt_200_questions.py
 ```
 
 `chatgpt_image.py` تصویر تولیدشده توسط خود صفحهٔ ChatGPT را از API
-`/v1/images/generations` دریافت و در `chatgpt-image.jpg` ذخیره می‌کند. فرمت
-واقعی تصویر را خود UI ChatGPT تعیین می‌کند؛ هنگام تعیین مسیر دلخواه، پسوند را
-با فرمت خروجی هماهنگ کنید. برای تغییر prompt و مسیر خروجی:
+`/v1/images/generations` دریافت می‌کند. نام پیش‌فرض فایل براساس MIME واقعی
+پاسخ (`chatgpt-image.png`، `jpg` یا `webp`) انتخاب می‌شود. هنگام تعیین مسیر
+دلخواه، پسوند را با فرمت خروجی هماهنگ کنید. برای تغییر prompt و مسیر خروجی:
 
 ```bash
 CHATGPT_IMAGE_PROMPT='A small watercolor fox reading a book' \
-CHATGPT_IMAGE_OUTPUT=/tmp/fox.jpg \
+CHATGPT_IMAGE_OUTPUT=/tmp/fox.png \
 python examples/chatgpt_image.py
 ```
 
