@@ -33,9 +33,6 @@ func (s *ChromeSession) primeNativeGenerate(ctx context.Context) error {
 	if err := chromedp.Run(ctx,
 		chromedp.Evaluate(clickConsentScript, nil),
 		chromedp.Sleep(500*time.Millisecond),
-		chromedp.WaitVisible(promptSelector, chromedp.ByQuery),
-		chromedp.Focus(promptSelector, chromedp.ByQuery),
-		chromedp.SendKeys(promptSelector, "آزمون آماده‌سازی داخلی", chromedp.ByQuery),
 		chromedp.Evaluate(clickRunScript, nil),
 	); err != nil {
 		return fmt.Errorf("start native AI Studio lifecycle: %w", err)
@@ -92,7 +89,16 @@ const clickRunScript = `(async () => {
     }
     throw new Error("AI Studio prompt controls did not become ready");
   };
+  const prompt = await waitFor(() => document.querySelector('` + promptSelector + `'), 30000);
+  const setValue = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set;
+  setValue.call(prompt, "آزمون آماده‌سازی داخلی");
+  prompt.dispatchEvent(new InputEvent("input", {
+    bubbles: true,
+    inputType: "insertText",
+    data: "آزمون آماده‌سازی داخلی",
+  }));
   const run = await waitFor(() => [...document.querySelectorAll('button[type="submit"]')]
-    .find(button => button.textContent?.includes("Run") && !button.disabled), 30000);
+    .find(button => button.textContent?.includes("Run") &&
+      !button.disabled && button.getAttribute("aria-disabled") !== "true"), 30000);
   run.click();
 })()`

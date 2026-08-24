@@ -51,7 +51,7 @@ def videos(directory: Path) -> list[Path]:
     return sorted(
         (path for path in directory.iterdir() if path.is_file() and path.suffix.lower() in SUPPORTED_SUFFIXES),
         key=lambda path: path.name.casefold(),
-    )
+    )[50:]
 
 
 def output_path(video: Path) -> Path:
