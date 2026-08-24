@@ -294,7 +294,10 @@ func (s *ChromeSession) PressChatGPTEnter(submitNonce string) error {
 	// composer. The session context owns that same tab and survives navigation.
 	time.Sleep(2 * time.Second)
 	predicate := fmt.Sprintf(`document.querySelector("#prompt-textarea")?.dataset.aistudioSubmitNonce === %s`, encodedNonce)
-	deadline := time.Now().Add(30 * time.Second)
+	// The extension can spend up to 45 seconds waiting for a reloaded ChatGPT
+	// tab before it writes the nonce. Keep the trusted Enter step outside that
+	// smaller browser-side deadline so a slow but healthy tab can finish.
+	deadline := time.Now().Add(60 * time.Second)
 	var lastErr error
 	probeLogged := false
 	for time.Now().Before(deadline) {
@@ -306,10 +309,22 @@ func (s *ChromeSession) PressChatGPTEnter(submitNonce string) error {
 			probeLogged = true
 		}
 		if lastErr == nil && ready {
-			lastErr = chromedp.Run(ctx,
-				chromedp.Focus("#prompt-textarea", chromedp.ByQuery),
-				chromedp.KeyEvent(kb.Enter),
-			)
+			var clicked bool
+			lastErr = chromedp.Run(ctx, chromedp.Evaluate(`(() => {
+				const button = document.querySelector('[data-testid="send-button"]');
+				if (!button || button.disabled) return false;
+				button.click();
+				return true;
+			})()`, &clicked))
+			if lastErr == nil && !clicked {
+				lastErr = fmt.Errorf("ChatGPT send button is unavailable")
+			}
+			if lastErr != nil {
+				lastErr = chromedp.Run(ctx,
+					chromedp.Focus("#prompt-textarea", chromedp.ByQuery),
+					chromedp.KeyEvent(kb.Enter),
+				)
+			}
 			if lastErr == nil {
 				cancel()
 				return nil

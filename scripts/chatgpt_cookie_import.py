@@ -6,6 +6,7 @@ import json
 import os
 import tempfile
 import time
+import uuid
 from dataclasses import dataclass
 from http.cookiejar import Cookie, CookieJar
 from pathlib import Path
@@ -15,7 +16,13 @@ from urllib.request import HTTPCookieProcessor, ProxyHandler, Request, build_ope
 from yt_dlp.cookies import extract_cookies_from_browser
 
 
-SESSION_URL = "https://chatgpt.com/api/auth/session"
+# This is the smallest authenticated read observed in chatgpt.com_only_chat.har.
+# Unlike /api/auth/session, it is served by the protected backend that actually
+# accepts the cookie session used for chats. limit=1 keeps the validation cheap.
+CONVERSATIONS_URL = (
+    "https://chatgpt.com/backend-api/conversations?offset=0&limit=1"
+    "&order=updated&is_archived=false&is_starred=false"
+)
 DEFAULT_ROOTS = (
     ("chrome", Path.home() / ".config/google-chrome"),
     ("chrome", Path.home() / ".config/google-chrome-beta"),
@@ -94,11 +101,15 @@ def validate_session(cookies: CookieJar, proxy: str, timeout: float) -> tuple[bo
     handlers = [HTTPCookieProcessor(cookies)]
     handlers.append(ProxyHandler({"http": proxy, "https": proxy}) if proxy else ProxyHandler({}))
     request = Request(
-        SESSION_URL,
+        CONVERSATIONS_URL,
         headers={
-            "Accept": "application/json",
+            "Accept": "*/*",
             "Accept-Language": "en-US,en;q=0.9",
             "Referer": "https://chatgpt.com/",
+            "Oai-Device-Id": str(uuid.uuid4()),
+            "Oai-Language": "en-US",
+            "X-Openai-Target-Path": "/backend-api/conversations",
+            "X-Openai-Target-Route": "/backend-api/conversations",
             "User-Agent": (
                 "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
                 "(KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
@@ -109,12 +120,21 @@ def validate_session(cookies: CookieJar, proxy: str, timeout: float) -> tuple[bo
         with build_opener(*handlers).open(request, timeout=timeout) as response:
             payload = json.loads(response.read())
     except HTTPError as error:
-        return False, f"session endpoint returned HTTP {error.code}"
+        return False, f"conversations endpoint returned HTTP {error.code}"
     except (OSError, URLError, UnicodeError, json.JSONDecodeError) as error:
-        return False, f"session check failed: {type(error).__name__}"
-    if not isinstance(payload, dict) or not (payload.get("accessToken") or payload.get("access_token")):
-        return False, "not signed in"
-    return True, "active"
+        return False, f"conversations check failed: {type(error).__name__}"
+    if not _is_conversation_page(payload):
+        return False, "conversations response was not an authenticated page"
+    return True, "active backend session"
+
+
+def _is_conversation_page(payload: object) -> bool:
+    """Recognize the paginated response shape captured from ChatGPT's backend."""
+    if not isinstance(payload, dict):
+        return False
+    if not isinstance(payload.get("items"), list):
+        return False
+    return all(isinstance(payload.get(key), int) for key in ("total", "limit", "offset"))
 
 
 def write_netscape(path: Path, cookies: CookieJar, replace: bool) -> None:

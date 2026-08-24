@@ -46,3 +46,12 @@ func TestChatGPTPendingJobIsReportedAsActive(t *testing.T) {
 		t.Fatalf("expected one active ChatGPT job, got %#v", health["pendingJobs"])
 	}
 }
+
+func TestSessionStateDoesNotTrustStaleReadiness(t *testing.T) {
+	if state := sessionState(true, map[string]any{"connected": false}); state != "DISCONNECTED" {
+		t.Fatalf("expected disconnected state, got %s", state)
+	}
+	if state := sessionState(true, map[string]any{"connected": true}); state != "READY" {
+		t.Fatalf("expected ready state, got %s", state)
+	}
+}

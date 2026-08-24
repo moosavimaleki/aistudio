@@ -13,6 +13,7 @@ type Job struct {
 	BrowserID    string
 	Payload      map[string]any
 	result       chan jobResult
+	dispatched   chan<- struct{}
 	dispatchedAt time.Time
 }
 type jobResult struct {
@@ -40,7 +41,11 @@ func (b *Broker) RequestContext(ctx context.Context, payload map[string]any, bro
 }
 
 func (b *Broker) RequestContextWithID(ctx context.Context, jobID string, payload map[string]any, browserID string) (map[string]any, error) {
-	job := &Job{ID: jobID, BrowserID: browserID, Payload: payload, result: make(chan jobResult, 1)}
+	return b.requestContextWithDispatch(ctx, jobID, payload, browserID, nil)
+}
+
+func (b *Broker) requestContextWithDispatch(ctx context.Context, jobID string, payload map[string]any, browserID string, dispatched chan<- struct{}) (map[string]any, error) {
+	job := &Job{ID: jobID, BrowserID: browserID, Payload: payload, result: make(chan jobResult, 1), dispatched: dispatched}
 	b.mu.Lock()
 	b.jobs[job.ID] = job
 	b.mu.Unlock()
@@ -58,11 +63,22 @@ func (b *Broker) Next(browserID string) *Job {
 	b.heartbeats[browserID] = time.Now()
 	for _, job := range b.jobs {
 		if job.BrowserID == browserID && (job.dispatchedAt.IsZero() || time.Since(job.dispatchedAt) >= b.redispatch) {
+			firstDispatch := job.dispatchedAt.IsZero()
 			job.dispatchedAt = time.Now()
+			if firstDispatch && job.dispatched != nil {
+				close(job.dispatched)
+			}
 			return &Job{ID: job.ID, Payload: job.Payload}
 		}
 	}
 	return nil
+}
+
+func (b *Broker) connected(browserID string) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	last := b.heartbeats[browserID]
+	return !last.IsZero() && time.Since(last) < 5*time.Second
 }
 func (b *Broker) Complete(id, browserID string, result map[string]any) bool {
 	b.mu.Lock()

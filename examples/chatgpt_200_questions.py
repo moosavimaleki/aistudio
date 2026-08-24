@@ -10,7 +10,7 @@ from pathlib import Path
 
 base_url = os.getenv("OPENAI_BASE_URL", "http://127.0.0.1:3346").rstrip("/")
 model = os.getenv("CHATGPT_MODEL", "chatgpt/gpt-5.6-pro")
-browser_id = os.getenv("CHATGPT_BROWSER_ID", "chatgpt")
+browser_id = os.getenv("CHATGPT_BROWSER_ID", "chatgpt10")
 delay_seconds = float(os.getenv("CHATGPT_DELAY_SECONDS", "2"))
 timeout = float(os.getenv("OPENAI_TIMEOUT", "240"))
 questions_file = Path(__file__).with_name("assets") / "chatgpt_200_questions.fa.txt"

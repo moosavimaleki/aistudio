@@ -8,9 +8,12 @@ import (
 	"time"
 )
 
+const chatGPTDispatchTimeout = 10 * time.Second
+
 type ChatService struct {
 	broker     *Broker
 	fleet      *Fleet
+	prepare    func(*ChromeSession) error
 	pressEnter func(*ChromeSession, string) error
 	mu         sync.Mutex
 	locks      map[string]*sync.Mutex
@@ -39,6 +42,9 @@ func NewChatService(broker *Broker, fleet *Fleet) *ChatService {
 	return &ChatService{
 		broker: broker,
 		fleet:  fleet,
+		prepare: func(session *ChromeSession) error {
+			return session.PrepareChatGPT()
+		},
 		pressEnter: func(session *ChromeSession, nonce string) error {
 			return session.PressChatGPTEnter(nonce)
 		},
@@ -106,8 +112,8 @@ func (s *ChatService) run(ctx context.Context, input chatJobRequest) (map[string
 	if err != nil {
 		return nil, "", err
 	}
-	if !session.Ready() {
-		return nil, "", fmt.Errorf("ChatGPT browser %s is not ready", resolved)
+	if err := s.ensureReady(ctx, resolved, session); err != nil {
+		return nil, "", err
 	}
 
 	jobContext, cancel := context.WithTimeout(ctx, 4*time.Minute)
@@ -127,10 +133,24 @@ func (s *ChatService) run(ctx context.Context, input chatJobRequest) (map[string
 		err   error
 	}
 	resultChannel := make(chan brokerResult, 1)
+	dispatched := make(chan struct{})
 	go func() {
-		result, requestErr := s.broker.RequestContextWithID(jobContext, jobID, payload, resolved)
+		result, requestErr := s.broker.requestContextWithDispatch(jobContext, jobID, payload, resolved, dispatched)
 		resultChannel <- brokerResult{value: result, err: requestErr}
 	}()
+	dispatchTimer := time.NewTimer(chatGPTDispatchTimeout)
+	defer dispatchTimer.Stop()
+	select {
+	case <-dispatched:
+	case <-dispatchTimer.C:
+		cancel()
+		<-resultChannel
+		session.MarkProviderUnready()
+		return nil, "", fmt.Errorf("ChatGPT browser %s extension is not connected", resolved)
+	case <-jobContext.Done():
+		requestResult := <-resultChannel
+		return nil, "", requestResult.err
+	}
 	if err := s.pressEnter(session, jobID); err != nil {
 		cancel()
 		if ctx.Err() == nil {
@@ -148,6 +168,31 @@ func (s *ChatService) run(ctx context.Context, input chatJobRequest) (map[string
 	result := requestResult.value
 	result["browserId"] = resolved
 	return result, resolved, nil
+}
+
+func (s *ChatService) ensureReady(ctx context.Context, browserID string, session *ChromeSession) error {
+	if session.Ready() && s.broker.connected(browserID) {
+		return nil
+	}
+	if err := s.prepare(session); err != nil {
+		return fmt.Errorf("ChatGPT browser %s is not ready after recovery: %w", browserID, err)
+	}
+	deadline := time.NewTimer(chatGPTDispatchTimeout)
+	defer deadline.Stop()
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		if session.Ready() && s.broker.connected(browserID) {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("ChatGPT browser %s recovery: %w", browserID, ctx.Err())
+		case <-deadline.C:
+			return fmt.Errorf("ChatGPT browser %s extension is not connected after recovery", browserID)
+		case <-ticker.C:
+		}
+	}
 }
 
 func shouldRecoverChatGPT(err error) bool {

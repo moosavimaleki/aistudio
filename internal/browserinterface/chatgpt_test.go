@@ -8,6 +8,7 @@ import (
 
 func TestChatServiceDispatchesBrowserJob(t *testing.T) {
 	broker := NewBroker()
+	broker.heartbeats["chatgpt"] = time.Now()
 	fleet := &Fleet{config: Config{ChatGPTDefaultID: "chatgpt"}, sessions: map[string]*ChromeSession{"chatgpt": {spec: BrowserSpec{ID: "chatgpt", Provider: ProviderChatGPT}, providerReady: true}}}
 	service := NewChatService(broker, fleet)
 	service.pressEnter = func(_ *ChromeSession, _ string) error { return nil }
@@ -43,6 +44,7 @@ func TestChatServiceDispatchesBrowserJob(t *testing.T) {
 
 func TestChatServicePreparesDirectJob(t *testing.T) {
 	broker := NewBroker()
+	broker.heartbeats["chatgpt"] = time.Now()
 	fleet := &Fleet{
 		config: Config{ChatGPTDefaultID: "chatgpt"},
 		sessions: map[string]*ChromeSession{
@@ -84,5 +86,50 @@ func TestChatServicePreparesDirectJob(t *testing.T) {
 	broker.Complete(job.ID, "chatgpt", map[string]any{"headers": map[string]string{"x-conduit-token": "test"}})
 	if err := <-done; err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestChatServiceRecoversDisconnectedExtensionBeforeSubmitting(t *testing.T) {
+	broker := NewBroker()
+	fleet := &Fleet{
+		config: Config{ChatGPTDefaultID: "chatgpt"},
+		sessions: map[string]*ChromeSession{
+			"chatgpt": {spec: BrowserSpec{ID: "chatgpt", Provider: ProviderChatGPT}, providerReady: true},
+		},
+	}
+	service := NewChatService(broker, fleet)
+	service.prepare = func(session *ChromeSession) error {
+		session.providerReady = true
+		broker.mu.Lock()
+		broker.heartbeats["chatgpt"] = time.Now()
+		broker.mu.Unlock()
+		return nil
+	}
+	pressed := false
+	service.pressEnter = func(_ *ChromeSession, _ string) error {
+		pressed = true
+		return nil
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := service.Generate(context.Background(), "chatgpt", "hello")
+		done <- err
+	}()
+	deadline := time.Now().Add(time.Second)
+	var job *Job
+	for job == nil && time.Now().Before(deadline) {
+		job = broker.Next("chatgpt")
+		time.Sleep(time.Millisecond)
+	}
+	if job == nil {
+		t.Fatal("recovered browser did not receive the job")
+	}
+	broker.Complete(job.ID, "chatgpt", map[string]any{"text": "answer"})
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if !pressed {
+		t.Fatal("recovered composer was not submitted")
 	}
 }

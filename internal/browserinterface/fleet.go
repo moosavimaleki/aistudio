@@ -34,20 +34,23 @@ func (f *Fleet) Start() error {
 }
 
 func (f *Fleet) Warm() {
+	var group sync.WaitGroup
 	for _, spec := range f.config.Browsers {
-		session := f.sessions[spec.ID]
-		var err error
-		if spec.Provider == ProviderChatGPT {
-			err = session.PrepareChatGPT()
-		} else {
-			_, err = session.Prepare(spec.CookieHeader, spec.AuthUser)
-		}
-		if err != nil {
-			f.mu.Lock()
-			f.warmErrors[spec.ID] = err.Error()
-			f.mu.Unlock()
-		}
+		spec := spec
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			session := f.sessions[spec.ID]
+			var err error
+			if spec.Provider == ProviderChatGPT {
+				err = session.PrepareChatGPT()
+			} else {
+				_, err = session.Prepare(spec.CookieHeader, spec.AuthUser)
+			}
+			f.setWarmError(spec.ID, err)
+		}()
 	}
+	group.Wait()
 }
 func (f *Fleet) Close() {
 	for _, session := range f.sessions {
@@ -229,11 +232,12 @@ func (f *Fleet) warmError(id string) string {
 }
 
 func sessionState(ready bool, health map[string]any) string {
+	connected, _ := health["connected"].(bool)
+	if !connected {
+		return "DISCONNECTED"
+	}
 	if ready {
 		return "READY"
 	}
-	if connected, _ := health["connected"].(bool); connected {
-		return "WARMING"
-	}
-	return "DISCONNECTED"
+	return "WARMING"
 }

@@ -52,7 +52,7 @@ func (s *Server) chatPrepare(writer http.ResponseWriter, request *http.Request) 
 		status := http.StatusBadGateway
 		if strings.Contains(err.Error(), "deadline exceeded") {
 			status = http.StatusGatewayTimeout
-		} else if strings.Contains(err.Error(), "not ready") {
+		} else if strings.Contains(err.Error(), "not ready") || strings.Contains(err.Error(), "not connected") {
 			status = http.StatusServiceUnavailable
 		}
 		writeError(writer, status, err)
@@ -84,6 +84,8 @@ func (s *Server) chatGenerate(writer http.ResponseWriter, request *http.Request)
 		status := http.StatusBadGateway
 		if strings.Contains(err.Error(), "deadline exceeded") {
 			status = http.StatusGatewayTimeout
+		} else if strings.Contains(err.Error(), "not ready") || strings.Contains(err.Error(), "not connected") {
+			status = http.StatusServiceUnavailable
 		}
 		writeError(writer, status, err)
 		return

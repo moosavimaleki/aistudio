@@ -5,8 +5,10 @@ import tempfile
 import unittest
 from http.cookiejar import Cookie, CookieJar
 from pathlib import Path
+from unittest.mock import patch
+from urllib.error import HTTPError
 
-from scripts.chatgpt_cookie_import import discover_profiles, write_netscape
+from scripts.chatgpt_cookie_import import CONVERSATIONS_URL, discover_profiles, validate_session, write_netscape
 
 
 def cookie(name: str, value: str) -> Cookie:
@@ -56,6 +58,60 @@ class CookieImportTests(unittest.TestCase):
             self.assertEqual(stat.S_IMODE(destination.stat().st_mode), 0o640)
             with self.assertRaises(FileExistsError):
                 write_netscape(destination, cookies, replace=False)
+
+    def test_validation_accepts_authenticated_conversations_response(self) -> None:
+        opener = FakeOpener(b'{"items": [], "total": 0, "limit": 1, "offset": 0}')
+
+        with patch("scripts.chatgpt_cookie_import.build_opener", return_value=opener):
+            active, reason = validate_session(CookieJar(), proxy="", timeout=3)
+
+        self.assertTrue(active)
+        self.assertEqual(reason, "active backend session")
+        self.assertEqual(opener.request.full_url, CONVERSATIONS_URL)
+
+    def test_validation_rejects_session_like_but_not_backend_response(self) -> None:
+        opener = FakeOpener(b'{"accessToken": "still-not-enough"}')
+
+        with patch("scripts.chatgpt_cookie_import.build_opener", return_value=opener):
+            active, reason = validate_session(CookieJar(), proxy="", timeout=3)
+
+        self.assertFalse(active)
+        self.assertEqual(reason, "conversations response was not an authenticated page")
+
+    def test_validation_rejects_unauthorized_backend_response(self) -> None:
+        opener = FakeOpener(HTTPError(CONVERSATIONS_URL, 401, "Unauthorized", {}, None))
+
+        with patch("scripts.chatgpt_cookie_import.build_opener", return_value=opener):
+            active, reason = validate_session(CookieJar(), proxy="", timeout=3)
+
+        self.assertFalse(active)
+        self.assertEqual(reason, "conversations endpoint returned HTTP 401")
+
+
+class FakeResponse:
+    def __init__(self, body: bytes) -> None:
+        self.body = body
+
+    def __enter__(self) -> "FakeResponse":
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        return None
+
+    def read(self) -> bytes:
+        return self.body
+
+
+class FakeOpener:
+    def __init__(self, result: bytes | HTTPError) -> None:
+        self.result = result
+        self.request = None
+
+    def open(self, request, timeout: float):
+        self.request = request
+        if isinstance(self.result, HTTPError):
+            raise self.result
+        return FakeResponse(self.result)
 
 
 if __name__ == "__main__":
