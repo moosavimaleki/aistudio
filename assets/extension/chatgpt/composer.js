@@ -14,6 +14,15 @@
     composer.dataset.aistudioSubmitNonce = submitNonce;
   }
 
+  async function submitProbe(submitNonce, timeoutMs = 45_000) {
+    await prepare(".", submitNonce, timeoutMs);
+    const button = await waitFor(() => {
+      const candidate = document.querySelector('[data-testid="send-button"]');
+      return candidate && !candidate.disabled ? candidate : null;
+    }, timeoutMs, "ChatGPT probe submit button did not become ready");
+    button.click();
+  }
+
   async function ready() {
     await acceptCookieConsent();
     await dismissBlockingDialog();
@@ -124,7 +133,7 @@
 
   const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
-  const api = { ready, prepare, assistantCount, imageSources, readGeneratedImages, readLastAssistant };
+  const api = { ready, prepare, submitProbe, assistantCount, imageSources, readGeneratedImages, readLastAssistant };
   globalThis.ChatGPTComposer = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })();

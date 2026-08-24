@@ -16,7 +16,7 @@ func TestBridgeReportsMissingArtifactNames(t *testing.T) {
 	defer server.Close()
 	client := &bridgeClient{endpoint: server.URL, http: server.Client()}
 
-	_, err := client.prepare(context.Background(), prepareRequest{Prompt: "test"})
+	_, err := client.prepare(context.Background(), prepareRequest{BrowserID: "chatgpt"})
 
 	if err == nil || !strings.Contains(err.Error(), "missing cookies") {
 		t.Fatalf("unexpected error: %v", err)
@@ -31,7 +31,7 @@ func TestBridgeAllowsFrontendWithoutSeparatePrepare(t *testing.T) {
 	defer server.Close()
 	client := &bridgeClient{endpoint: server.URL, http: server.Client()}
 
-	artifacts, err := client.prepare(context.Background(), prepareRequest{Prompt: "test"})
+	artifacts, err := client.prepare(context.Background(), prepareRequest{BrowserID: "chatgpt"})
 
 	if err != nil || artifacts.Headers["x-conduit-token"] != "native" {
 		t.Fatalf("unexpected result: artifacts=%#v err=%v", artifacts, err)

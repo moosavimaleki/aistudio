@@ -41,12 +41,7 @@ func (s *Server) chatPrepare(writer http.ResponseWriter, request *http.Request) 
 		return
 	}
 	result, err := s.chat.PrepareDirect(request.Context(), DirectChatRequest{
-		BrowserID:       stringValue(body["browserId"]),
-		Prompt:          stringValue(body["prompt"]),
-		Model:           stringValue(body["model"]),
-		ConversationID:  stringValue(body["conversationId"]),
-		ParentMessageID: stringValue(body["parentMessageId"]),
-		ThinkingEffort:  stringValue(body["thinkingEffort"]),
+		BrowserID: stringValue(body["browserId"]),
 	})
 	if err != nil {
 		status := http.StatusBadGateway

@@ -79,14 +79,11 @@ test("page client marks a ChatGPT image job without adding protected request dat
 
 test("page client requests browser artifacts for a direct Go turn", async () => {
   const sent = [];
-  let updateCalls = 0;
+  let reloadCalls = 0;
   const chromeApi = {
     tabs: {
       query: async () => [{ id: 50, active: true }],
-      update: async (id, update) => {
-        updateCalls++;
-        return { id, ...update };
-      },
+      reload: async () => { reloadCalls++; },
       get: async () => ({ id: 50, status: "complete", url: "https://chatgpt.com/c/existing" }),
       sendMessage: async (tabId, message) => {
         if (message.type === protocol.chatReadyMessage) return { ready: true };
@@ -111,8 +108,9 @@ test("page client requests browser artifacts for a direct Go turn", async () => 
   });
 
   assert.equal(sent[0].message.direct, true);
-  assert.equal(sent[0].message.model, "gpt-5-6-pro");
-  assert.equal(sent[0].message.conversationId, "conversation-1");
-  assert.equal(sent[0].message.parentMessageId, "message-1");
-  assert.equal(updateCalls, 0);
+  assert.equal(Object.hasOwn(sent[0].message, "prompt"), false);
+  assert.equal(Object.hasOwn(sent[0].message, "model"), false);
+  assert.equal(Object.hasOwn(sent[0].message, "conversationId"), false);
+  assert.equal(Object.hasOwn(sent[0].message, "parentMessageId"), false);
+  assert.equal(reloadCalls, 1);
 });

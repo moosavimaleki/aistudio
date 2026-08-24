@@ -52,18 +52,17 @@ func TestChatServicePreparesDirectJob(t *testing.T) {
 		},
 	}
 	service := NewChatService(broker, fleet)
-	service.pressEnter = func(_ *ChromeSession, _ string) error { return nil }
+	pressed := false
+	service.pressEnter = func(_ *ChromeSession, _ string) error {
+		pressed = true
+		return nil
+	}
 
 	done := make(chan error, 1)
 	go func() {
 		_, _, err := service.run(context.Background(), chatJobRequest{
-			BrowserID:       "chatgpt",
-			Prompt:          "hello",
-			Kind:            "chatgpt.prepare_direct",
-			Model:           "gpt-5-6-pro",
-			ConversationID:  "conversation-1",
-			ParentMessageID: "message-1",
-			ThinkingEffort:  "standard",
+			BrowserID: "chatgpt",
+			Kind:      "chatgpt.prepare_direct",
 		})
 		done <- err
 	}()
@@ -77,15 +76,15 @@ func TestChatServicePreparesDirectJob(t *testing.T) {
 	if job == nil {
 		t.Fatal("direct chat job was not dispatched")
 	}
-	if job.Payload["kind"] != "chatgpt.prepare_direct" ||
-		job.Payload["model"] != "gpt-5-6-pro" ||
-		job.Payload["conversationId"] != "conversation-1" ||
-		job.Payload["parentMessageId"] != "message-1" {
+	if job.Payload["kind"] != "chatgpt.prepare_direct" || job.Payload["prompt"] != "" {
 		t.Fatalf("unexpected payload: %#v", job.Payload)
 	}
 	broker.Complete(job.ID, "chatgpt", map[string]any{"headers": map[string]string{"x-conduit-token": "test"}})
 	if err := <-done; err != nil {
 		t.Fatal(err)
+	}
+	if pressed {
+		t.Fatal("direct artifact preparation must not use the Chrome input path")
 	}
 }
 

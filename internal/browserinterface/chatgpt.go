@@ -20,22 +20,13 @@ type ChatService struct {
 }
 
 type DirectChatRequest struct {
-	BrowserID       string
-	Prompt          string
-	Model           string
-	ConversationID  string
-	ParentMessageID string
-	ThinkingEffort  string
+	BrowserID string
 }
 
 type chatJobRequest struct {
-	BrowserID       string
-	Prompt          string
-	Kind            string
-	Model           string
-	ConversationID  string
-	ParentMessageID string
-	ThinkingEffort  string
+	BrowserID string
+	Prompt    string
+	Kind      string
 }
 
 func NewChatService(broker *Broker, fleet *Fleet) *ChatService {
@@ -72,13 +63,8 @@ func (s *ChatService) GenerateImage(ctx context.Context, browserID, prompt strin
 
 func (s *ChatService) PrepareDirect(ctx context.Context, input DirectChatRequest) (map[string]any, error) {
 	result, browserID, err := s.run(ctx, chatJobRequest{
-		BrowserID:       input.BrowserID,
-		Prompt:          input.Prompt,
-		Kind:            "chatgpt.prepare_direct",
-		Model:           input.Model,
-		ConversationID:  input.ConversationID,
-		ParentMessageID: input.ParentMessageID,
-		ThinkingEffort:  input.ThinkingEffort,
+		BrowserID: input.BrowserID,
+		Kind:      "chatgpt.prepare_direct",
 	})
 	if err != nil {
 		return nil, err
@@ -98,7 +84,7 @@ func (s *ChatService) PrepareDirect(ctx context.Context, input DirectChatRequest
 }
 
 func (s *ChatService) run(ctx context.Context, input chatJobRequest) (map[string]any, string, error) {
-	if input.Prompt == "" {
+	if input.Kind != "chatgpt.prepare_direct" && input.Prompt == "" {
 		return nil, "", fmt.Errorf("ChatGPT prompt is required")
 	}
 	resolved, err := s.fleet.ResolveChatGPT(input.BrowserID)
@@ -120,13 +106,9 @@ func (s *ChatService) run(ctx context.Context, input chatJobRequest) (map[string
 	defer cancel()
 	jobID := fmt.Sprintf("job-%d", time.Now().UnixNano())
 	payload := map[string]any{
-		"kind":            input.Kind,
-		"prompt":          input.Prompt,
-		"submitNonce":     jobID,
-		"model":           input.Model,
-		"conversationId":  input.ConversationID,
-		"parentMessageId": input.ParentMessageID,
-		"thinkingEffort":  input.ThinkingEffort,
+		"kind":        input.Kind,
+		"prompt":      input.Prompt,
+		"submitNonce": jobID,
 	}
 	type brokerResult struct {
 		value map[string]any
@@ -151,12 +133,14 @@ func (s *ChatService) run(ctx context.Context, input chatJobRequest) (map[string
 		requestResult := <-resultChannel
 		return nil, "", requestResult.err
 	}
-	if err := s.pressEnter(session, jobID); err != nil {
-		cancel()
-		if ctx.Err() == nil {
-			session.MarkProviderUnready()
+	if input.Kind != "chatgpt.prepare_direct" {
+		if err := s.pressEnter(session, jobID); err != nil {
+			cancel()
+			if ctx.Err() == nil {
+				session.MarkProviderUnready()
+			}
+			return nil, "", fmt.Errorf("submit ChatGPT prompt: %w", err)
 		}
-		return nil, "", fmt.Errorf("submit ChatGPT prompt: %w", err)
 	}
 	requestResult := <-resultChannel
 	if requestResult.err != nil {

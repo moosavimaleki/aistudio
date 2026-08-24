@@ -9,14 +9,11 @@
     if (event.source !== window || event.origin !== location.origin) return;
     if (event.data?.source !== protocol.chatRequestSource) return;
     if (typeof event.data.jobId !== "string") return;
-    waitingJob = {
+    const job = {
       id: event.data.jobId,
       direct: event.data.direct === true,
-      model: stringValue(event.data.model),
-      conversationId: stringValue(event.data.conversationId),
-      parentMessageId: stringValue(event.data.parentMessageId),
-      thinkingEffort: stringValue(event.data.thinkingEffort),
     };
+    waitingJob = job;
   });
 
   window.fetch = async function (...args) {
@@ -78,43 +75,24 @@
 
   async function directTransport(args, upstreamPath, job) {
     const request = new Request(args[0], args[1]);
-    const headers = Object.fromEntries(request.headers.entries());
     return {
-      headers,
+      headers: Object.fromEntries(request.headers.entries()),
       prepareHeaders: job.prepareHeaders || {},
       upstreamPath,
-      context: {
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        timezoneOffsetMin: new Date().getTimezoneOffset(),
-        acceptLanguage: acceptLanguage(),
-        secCHUA: clientHintBrands(),
-        secCHUAMobile: navigator.userAgentData?.mobile ? "?1" : "?0",
-        secCHUAPlatform: navigator.userAgentData?.platform || navigator.platform,
-        isDarkMode: matchMedia("(prefers-color-scheme: dark)").matches,
-        timeSinceLoaded: Math.max(1, Math.round(performance.now() / 1000)),
-        pageHeight: document.documentElement.clientHeight,
-        pageWidth: document.documentElement.clientWidth,
-        pixelRatio: window.devicePixelRatio,
-        screenHeight: window.screen.height,
-        screenWidth: window.screen.width,
-        hasWebPushCapabilities: "PushManager" in window,
-        webPushNotificationPermission: globalThis.Notification?.permission || "default",
-      },
+      context: browserContext(),
     };
   }
 
   function delegatedResponse() {
-    const conversationId = crypto.randomUUID();
-    const messageId = crypto.randomUUID();
     const initial = {
       p: "",
       o: "add",
       v: {
-        conversation_id: conversationId,
+        conversation_id: crypto.randomUUID(),
         message: {
-          id: messageId,
+          id: crypto.randomUUID(),
           author: { role: "assistant" },
-          content: { content_type: "text", parts: ["Laboratory Go client received the request."] },
+          content: { content_type: "text", parts: ["Laboratory token probe completed."] },
           status: "finished_successfully",
           end_turn: true,
         },
@@ -130,6 +108,26 @@
       status: 200,
       headers: { "Content-Type": "text/event-stream; charset=utf-8" },
     });
+  }
+
+  function browserContext() {
+    return {
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      timezoneOffsetMin: new Date().getTimezoneOffset(),
+      acceptLanguage: acceptLanguage(),
+      secCHUA: clientHintBrands(),
+      secCHUAMobile: navigator.userAgentData?.mobile ? "?1" : "?0",
+      secCHUAPlatform: navigator.userAgentData?.platform || navigator.platform,
+      isDarkMode: matchMedia("(prefers-color-scheme: dark)").matches,
+      timeSinceLoaded: Math.max(1, Math.round(performance.now() / 1000)),
+      pageHeight: document.documentElement.clientHeight,
+      pageWidth: document.documentElement.clientWidth,
+      pixelRatio: window.devicePixelRatio,
+      screenHeight: window.screen.height,
+      screenWidth: window.screen.width,
+      hasWebPushCapabilities: "PushManager" in window,
+      webPushNotificationPermission: globalThis.Notification?.permission || "default",
+    };
   }
 
   async function observe(response, jobId, upstreamPath) {
@@ -169,10 +167,6 @@
 
   function message(error) {
     return error instanceof Error ? error.message : String(error);
-  }
-
-  function stringValue(value) {
-    return typeof value === "string" ? value : "";
   }
 
   function clientHintBrands() {

@@ -29,35 +29,27 @@
     async function executeChat(job) {
       if (!chatgptPageMatch) throw new Error("ChatGPT page match is missing from extension config");
       let tab = await findTab(chatgptPageMatch);
-      const reused = Boolean(tab?.id);
       const startURL = chatgptPageMatch.replace(/\*.*$/, "");
       const direct = job.kind === protocol.chatDirectJobKind;
       if (!tab?.id) {
         tab = await chromeApi.tabs.create({ url: startURL, active: false });
-      } else if (!direct) {
+      } else if (direct) {
+        await chromeApi.tabs.reload(tab.id);
+      } else {
         tab = await chromeApi.tabs.update(tab.id, { url: startURL, active: false });
       }
-      if (direct && reused) {
-        try {
-          await waitForChatPage(tab.id, startURL, true, 5_000);
-        } catch (_error) {
-          tab = await chromeApi.tabs.update(tab.id, { url: startURL, active: false });
-          await waitForChatPage(tab.id, startURL);
-        }
-      } else {
-        await waitForChatPage(tab.id, startURL);
-      }
+      await waitForChatPage(tab.id, startURL, direct);
       const result = await sendWhenReady(tab.id, {
         type: protocol.chatJobMessage,
         jobId: job.id,
-        prompt: job.prompt,
-        submitNonce: job.submitNonce,
-        expectImage: job.kind === protocol.chatImageJobKind,
         direct: job.kind === protocol.chatDirectJobKind,
-        model: job.model,
-        conversationId: job.conversationId,
-        parentMessageId: job.parentMessageId,
-        thinkingEffort: job.thinkingEffort,
+        ...(direct ? {
+          submitNonce: job.submitNonce,
+        } : {
+          prompt: job.prompt,
+          submitNonce: job.submitNonce,
+          expectImage: job.kind === protocol.chatImageJobKind,
+        }),
       });
       if (result?.error) throw new Error(result.error);
       if (job.kind === protocol.chatDirectJobKind) {

@@ -117,6 +117,15 @@
     composer.dataset.aistudioSubmitNonce = submitNonce;
   }
 
+  async function submitProbe(submitNonce, timeoutMs = 45_000) {
+    await prepare(".", submitNonce, timeoutMs);
+    const button = await waitFor(() => {
+      const candidate = document.querySelector('[data-testid="send-button"]');
+      return candidate && !candidate.disabled ? candidate : null;
+    }, timeoutMs, "ChatGPT probe submit button did not become ready");
+    button.click();
+  }
+
   async function ready() {
     await acceptCookieConsent();
     await dismissBlockingDialog();
@@ -227,7 +236,7 @@
 
   const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
-  const api = { ready, prepare, assistantCount, imageSources, readGeneratedImages, readLastAssistant };
+  const api = { ready, prepare, submitProbe, assistantCount, imageSources, readGeneratedImages, readLastAssistant };
   globalThis.ChatGPTComposer = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })();
@@ -253,21 +262,25 @@
   });
 
   async function run(job) {
-    if (typeof job.prompt !== "string" || !job.prompt.trim()) return { error: "ChatGPT prompt is empty" };
+    const direct = job.direct === true;
+    if (!direct && (typeof job.prompt !== "string" || !job.prompt.trim())) {
+      return { error: "ChatGPT prompt is empty" };
+    }
     const previousAssistantCount = globalThis.ChatGPTComposer.assistantCount();
     const previousImages = globalThis.ChatGPTComposer.imageSources();
     const capture = channel.capture(job.jobId, {
-      direct: job.direct === true,
-      model: job.model,
-      conversationId: job.conversationId,
-      parentMessageId: job.parentMessageId,
-      thinkingEffort: job.thinkingEffort,
+      direct,
     });
     try {
+      if (direct) {
+        await globalThis.ChatGPTComposer.submitProbe(job.submitNonce || job.jobId);
+        const result = await capture.result;
+        setTimeout(() => location.reload(), 500);
+        return result;
+      }
       await globalThis.ChatGPTComposer.prepare(job.prompt, job.submitNonce || job.jobId);
       const result = await capture.result;
       if (result.error) return result;
-      if (job.direct) return result;
       if (job.expectImage) {
         const images = await globalThis.ChatGPTComposer.readGeneratedImages(previousImages);
         if (!images.length) return { error: "ChatGPT page returned no generated image" };

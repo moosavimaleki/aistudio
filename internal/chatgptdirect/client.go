@@ -70,12 +70,7 @@ func (c *Client) generateOnce(
 	parentMessageID string,
 ) (Result, error) {
 	artifacts, err := c.bridge.prepare(ctx, prepareRequest{
-		BrowserID:       input.BrowserID,
-		Prompt:          prompt,
-		Model:           model.Slug,
-		ConversationID:  input.ConversationID,
-		ParentMessageID: parentMessageID,
-		ThinkingEffort:  model.ThinkingEffort,
+		BrowserID: input.BrowserID,
 	})
 	if err != nil {
 		return Result{}, err

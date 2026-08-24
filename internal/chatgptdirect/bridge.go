@@ -16,12 +16,7 @@ type bridgeClient struct {
 }
 
 type prepareRequest struct {
-	BrowserID       string `json:"browserId"`
-	Prompt          string `json:"prompt"`
-	Model           string `json:"model"`
-	ConversationID  string `json:"conversationId"`
-	ParentMessageID string `json:"parentMessageId"`
-	ThinkingEffort  string `json:"thinkingEffort"`
+	BrowserID string `json:"browserId"`
 }
 
 func newBridgeClient(factoryOrigin string) *bridgeClient {

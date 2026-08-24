@@ -8,7 +8,8 @@ from pathlib import Path
 from unittest.mock import patch
 from urllib.error import HTTPError
 
-from scripts.chatgpt_cookie_import import CONVERSATIONS_URL, discover_profiles, validate_session, write_netscape
+from scripts.import_chatgpt_cookies import remove_stale_exports
+from scripts.chatgpt_cookie_import import ACCOUNT_CHECK_URL, ACCOUNT_URL, discover_profiles, validate_session, write_netscape
 
 
 def cookie(name: str, value: str) -> Cookie:
@@ -59,33 +60,75 @@ class CookieImportTests(unittest.TestCase):
             with self.assertRaises(FileExistsError):
                 write_netscape(destination, cookies, replace=False)
 
-    def test_validation_accepts_authenticated_conversations_response(self) -> None:
-        opener = FakeOpener(b'{"items": [], "total": 0, "limit": 1, "offset": 0}')
+    def test_validation_accepts_authenticated_account_response(self) -> None:
+        opener = FakeOpener(
+            b'{"accessToken":"token"}',
+            b'{"accounts":{"account":{}}, "account_ordering":["account"]}',
+            b'{"id":"user", "email":"user@example.test", "client_id":"client",'
+            b'"orgs":{"data":[{"id":"org", "personal":true}]}}'
+        )
 
         with patch("scripts.chatgpt_cookie_import.build_opener", return_value=opener):
             active, reason = validate_session(CookieJar(), proxy="", timeout=3)
 
         self.assertTrue(active)
-        self.assertEqual(reason, "active backend session")
-        self.assertEqual(opener.request.full_url, CONVERSATIONS_URL)
+        self.assertEqual(reason, "active authenticated account")
+        self.assertEqual(
+            [request.full_url for request in opener.requests],
+            ["https://chatgpt.com/api/auth/session", ACCOUNT_CHECK_URL, ACCOUNT_URL],
+        )
+        self.assertEqual(opener.requests[2].get_header("Chatgpt-account-id"), "account")
+        self.assertEqual(opener.requests[2].get_header("Authorization"), "Bearer token")
 
-    def test_validation_rejects_session_like_but_not_backend_response(self) -> None:
-        opener = FakeOpener(b'{"accessToken": "still-not-enough"}')
+    def test_validation_rejects_half_signed_in_account_response(self) -> None:
+        opener = FakeOpener(
+            b'{"accessToken":"token"}',
+            b'{"accounts":{"account":{}}, "account_ordering":["account"]}',
+            b'{"id":"guest", "email":"guest@example.test", "object":"user"}',
+        )
 
         with patch("scripts.chatgpt_cookie_import.build_opener", return_value=opener):
             active, reason = validate_session(CookieJar(), proxy="", timeout=3)
 
         self.assertFalse(active)
-        self.assertEqual(reason, "conversations response was not an authenticated page")
+        self.assertEqual(reason, "account response is anonymous or incomplete")
 
     def test_validation_rejects_unauthorized_backend_response(self) -> None:
-        opener = FakeOpener(HTTPError(CONVERSATIONS_URL, 401, "Unauthorized", {}, None))
+        opener = FakeOpener(
+            b'{"accessToken":"token"}',
+            b'{"accounts":{"account":{}}, "account_ordering":["account"]}',
+            HTTPError(ACCOUNT_URL, 401, "Unauthorized", {}, None),
+        )
 
         with patch("scripts.chatgpt_cookie_import.build_opener", return_value=opener):
             active, reason = validate_session(CookieJar(), proxy="", timeout=3)
 
         self.assertFalse(active)
-        self.assertEqual(reason, "conversations endpoint returned HTTP 401")
+        self.assertEqual(reason, "account endpoint returned HTTP 401")
+
+    def test_validation_rejects_session_without_access_token(self) -> None:
+        opener = FakeOpener(b'{"user":{"id":"guest"}}')
+
+        with patch("scripts.chatgpt_cookie_import.build_opener", return_value=opener):
+            active, reason = validate_session(CookieJar(), proxy="", timeout=3)
+
+        self.assertFalse(active)
+        self.assertEqual(reason, "session access token is missing")
+
+    def test_replace_prunes_only_obsolete_numbered_exports(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            (output / "chatgpt-01.txt").touch()
+            (output / "chatgpt-02.txt").touch()
+            (output / "chatgpt.txt").touch()
+            (output / "notes.txt").touch()
+
+            remove_stale_exports(output, {"chatgpt-01.txt"})
+
+            self.assertTrue((output / "chatgpt-01.txt").exists())
+            self.assertFalse((output / "chatgpt-02.txt").exists())
+            self.assertTrue((output / "chatgpt.txt").exists())
+            self.assertTrue((output / "notes.txt").exists())
 
 
 class FakeResponse:
@@ -103,15 +146,16 @@ class FakeResponse:
 
 
 class FakeOpener:
-    def __init__(self, result: bytes | HTTPError) -> None:
-        self.result = result
-        self.request = None
+    def __init__(self, *results: bytes | HTTPError) -> None:
+        self.results = list(results)
+        self.requests = []
 
     def open(self, request, timeout: float):
-        self.request = request
-        if isinstance(self.result, HTTPError):
-            raise self.result
-        return FakeResponse(self.result)
+        self.requests.append(request)
+        result = self.results.pop(0)
+        if isinstance(result, HTTPError):
+            raise result
+        return FakeResponse(result)
 
 
 if __name__ == "__main__":
