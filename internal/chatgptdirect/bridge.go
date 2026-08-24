@@ -63,12 +63,9 @@ func (b *bridgeClient) prepare(ctx context.Context, input prepareRequest) (Artif
 	if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
 		return Artifacts{}, err
 	}
-	missing := make([]string, 0, 3)
+	missing := make([]string, 0, 2)
 	if len(result.Headers) == 0 {
 		missing = append(missing, "final headers")
-	}
-	if len(result.PrepareHeaders) == 0 {
-		missing = append(missing, "prepare headers")
 	}
 	if result.Cookies == "" {
 		missing = append(missing, "cookies")

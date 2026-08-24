@@ -84,21 +84,23 @@ func (c *Client) generateOnce(
 	if err != nil {
 		return Result{}, err
 	}
-	preparePayload, err := buildTurnPreparePayload(payload)
-	if err != nil {
-		return Result{}, err
+	if len(artifacts.PrepareHeaders) > 0 {
+		preparePayload, prepareErr := buildTurnPreparePayload(payload)
+		if prepareErr != nil {
+			return Result{}, prepareErr
+		}
+		turnTraceID, traceErr := newUUID()
+		if traceErr != nil {
+			return Result{}, fmt.Errorf("create ChatGPT turn trace ID: %w", traceErr)
+		}
+		artifacts.Headers["x-oai-turn-trace-id"] = turnTraceID
+		artifacts.PrepareHeaders["x-oai-turn-trace-id"] = turnTraceID
+		conduitToken, prepareErr := c.prepareTurn(ctx, artifacts, preparePayload)
+		if prepareErr != nil {
+			return Result{}, prepareErr
+		}
+		artifacts.Headers["x-conduit-token"] = conduitToken
 	}
-	turnTraceID, err := newUUID()
-	if err != nil {
-		return Result{}, fmt.Errorf("create ChatGPT turn trace ID: %w", err)
-	}
-	artifacts.Headers["x-oai-turn-trace-id"] = turnTraceID
-	artifacts.PrepareHeaders["x-oai-turn-trace-id"] = turnTraceID
-	conduitToken, err := c.prepareTurn(ctx, artifacts, preparePayload)
-	if err != nil {
-		return Result{}, err
-	}
-	artifacts.Headers["x-conduit-token"] = conduitToken
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return Result{}, err

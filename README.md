@@ -151,6 +151,14 @@ docker compose restart aistudio
 
 هر فایل خروجی یک Chrome مستقل در کانتینر می‌سازد؛ بنابراین پیش از import تعداد
 sessionهای گزارش‌شده توسط `--dry-run` را با ظرفیت CPU و RAM میزبان تطبیق دهید.
+برای بالا آوردن فقط یک یا چند حساب مشخص، شناسه‌ها را در `.env` محدود کنید:
+
+```dotenv
+CHATGPT_ENABLED_BROWSER_IDS=chatgpt5
+CHATGPT_DEFAULT_BROWSER_ID=chatgpt5
+```
+
+مقادیر متعدد با ویرگول جدا می‌شوند؛ برای نمونه `chatgpt,chatgpt5`.
 
 ### ۳. اجرا و بررسی
 

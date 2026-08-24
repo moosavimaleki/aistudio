@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -39,6 +40,11 @@ func LoadConfig() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	enabledChatGPT, err := parseBrowserIDSet(os.Getenv("CHATGPT_ENABLED_BROWSER_IDS"))
+	if err != nil {
+		return Config{}, err
+	}
+	filterChatGPT := len(enabledChatGPT) > 0
 	if value := os.Getenv("CHROME_CDP_BASE_PORT"); value != "" {
 		fmt.Sscanf(value, "%d", &result.CDPBasePort)
 	}
@@ -72,6 +78,7 @@ func LoadConfig() (Config, error) {
 			CookieHeader: header, CookieFile: file,
 		})
 	}
+	chatGPTIDs := make([]string, 0, len(chatGPTFiles))
 	for index, file := range chatGPTFiles {
 		suffix := ""
 		id := "chatgpt"
@@ -82,24 +89,72 @@ func LoadConfig() (Config, error) {
 		if configured := os.Getenv("CHATGPT_BROWSER_ID" + suffix); configured != "" {
 			id = configured
 		}
+		if !browserIDEnabled(filterChatGPT, enabledChatGPT, id) {
+			continue
+		}
 		if err := validateBrowserID(id, result.Browsers); err != nil {
 			return Config{}, err
 		}
 		result.Browsers = append(result.Browsers, BrowserSpec{
 			ID: id, Provider: ProviderChatGPT, CookieFile: file, ChatGPTCookieFile: file,
 		})
+		chatGPTIDs = append(chatGPTIDs, id)
+		delete(enabledChatGPT, id)
+	}
+	if len(enabledChatGPT) > 0 {
+		return Config{}, fmt.Errorf("unknown CHATGPT_ENABLED_BROWSER_IDS: %s", joinBrowserIDs(enabledChatGPT))
 	}
 	result.DefaultID = os.Getenv("AISTUDIO_DEFAULT_BROWSER_ID")
 	if result.DefaultID == "" {
 		result.DefaultID = result.Browsers[0].ID
 	}
-	if len(chatGPTFiles) > 0 {
+	if len(chatGPTIDs) > 0 {
 		result.ChatGPTDefaultID = os.Getenv("CHATGPT_DEFAULT_BROWSER_ID")
 		if result.ChatGPTDefaultID == "" {
-			result.ChatGPTDefaultID = "chatgpt"
+			result.ChatGPTDefaultID = chatGPTIDs[0]
+		}
+		if !containsBrowserID(chatGPTIDs, result.ChatGPTDefaultID) {
+			return Config{}, fmt.Errorf("CHATGPT_DEFAULT_BROWSER_ID is not enabled: %s", result.ChatGPTDefaultID)
 		}
 	}
 	return result, nil
+}
+
+func parseBrowserIDSet(raw string) (map[string]bool, error) {
+	result := map[string]bool{}
+	for _, value := range strings.Split(raw, ",") {
+		id := strings.TrimSpace(value)
+		if id == "" {
+			continue
+		}
+		if !regexp.MustCompile(`^[A-Za-z0-9_-]+$`).MatchString(id) {
+			return nil, fmt.Errorf("invalid CHATGPT_ENABLED_BROWSER_IDS value: %s", id)
+		}
+		result[id] = true
+	}
+	return result, nil
+}
+
+func browserIDEnabled(filter bool, enabled map[string]bool, id string) bool {
+	return !filter || enabled[id]
+}
+
+func joinBrowserIDs(values map[string]bool) string {
+	result := make([]string, 0, len(values))
+	for id := range values {
+		result = append(result, id)
+	}
+	sort.Strings(result)
+	return strings.Join(result, ",")
+}
+
+func containsBrowserID(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }
 
 func discoverOptionalCookieFiles(directory string) ([]string, error) {

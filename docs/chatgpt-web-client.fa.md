@@ -22,8 +22,11 @@ API دو رفتار صریح دارد:
 - headerهای واقعی prepare و final شامل client، build، device و session
 - user agent، client hints و اطلاعات صفحه
 
-شناسهٔ `x-oai-turn-trace-id` در Go یک بار برای هر turn ساخته و روی هر دو
-درخواست استفاده می‌شود. `x-conduit-token` نیز خروجی prepare واقعی Go است.
+اگر frontend برای turn جاری prepare جداگانه بسازد، شناسهٔ
+`x-oai-turn-trace-id` در Go یک بار ساخته، روی هر دو درخواست استفاده و
+`x-conduit-token` از پاسخ prepare واقعی Go گرفته می‌شود. بعضی sessionها prepare
+جدا نمی‌سازند؛ در آن حالت Go درخواست مصنوعی اضافه نمی‌کند و trace/conduit همان
+درخواست final مرورگر را حفظ می‌کند.
 
 هیچ challenge، Proof-of-Work، Turnstile یا Sentinel در Go حل، بازسازی یا
 شبیه‌سازی نمی‌شود. artifactها cache یا reuse نیز نمی‌شوند.
@@ -40,10 +43,10 @@ Go: validate model/messages/conversation IDs
 Chrome extension: submit a marked UI turn
         |
         v
-native ChatGPT frontend: build prepare/final headers + protected challenges
+native ChatGPT frontend: build final and optional prepare headers + protected challenges
         |
         v
-extension captures prepare and final before network
+extension captures optional prepare and final before network
 and returns synthetic success responses to the UI
         |
         v
@@ -53,7 +56,7 @@ Go: fresh cookies + captured headers + current payloads
 Chrome-compatible TLS/HTTP2 transport through the same proxy
         |
         v
-/backend-api/f/conversation/prepare -> fresh conduit token
+/backend-api/f/conversation/prepare -> fresh conduit token (only when observed)
         |
         v
 /backend-api/f/conversation -> SSE parser -> OpenAI response
