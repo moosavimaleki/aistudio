@@ -29,9 +29,6 @@ type ChromeSession struct {
 	ctx           context.Context
 	cancel        context.CancelFunc
 	mu            sync.Mutex
-	chatMu        sync.Mutex
-	chatCtx       context.Context
-	chatCancel    context.CancelFunc
 	stateMu       sync.RWMutex
 	headersMu     sync.RWMutex
 	primeMu       sync.Mutex
@@ -198,6 +195,10 @@ func (s *ChromeSession) Prepare(cookies, authUser string) (map[string]any, error
 }
 
 func (s *ChromeSession) PrepareChatGPT() error {
+	return s.prepareChatGPT(true)
+}
+
+func (s *ChromeSession) prepareChatGPT(importCookies bool) error {
 	if s.spec.Provider != ProviderChatGPT {
 		return fmt.Errorf("browser %s is not a ChatGPT profile", s.spec.ID)
 	}
@@ -206,16 +207,22 @@ func (s *ChromeSession) PrepareChatGPT() error {
 	if err := s.Start(); err != nil {
 		return err
 	}
-	if err := s.refreshChatGPTCookies(); err != nil {
-		return err
+	if importCookies {
+		if err := s.refreshChatGPTCookies(); err != nil {
+			return err
+		}
 	}
 	ctx, cancel := context.WithTimeout(s.ctx, 45*time.Second)
 	defer cancel()
-	if err := chromedp.Run(ctx,
-		chromedp.Navigate("https://chatgpt.com/"),
-		chromedp.WaitReady("body", chromedp.ByQuery),
-	); err != nil {
+	navigationErr := chromedp.Run(ctx, chromedp.Navigate("https://chatgpt.com/"))
+	if navigationErr != nil && !strings.Contains(navigationErr.Error(), "net::ERR_ABORTED") {
+		return fmt.Errorf("open ChatGPT profile: %w", navigationErr)
+	}
+	if err := chromedp.Run(ctx, chromedp.WaitReady("body", chromedp.ByQuery)); err != nil {
 		return fmt.Errorf("open ChatGPT profile: %w", err)
+	}
+	if err := s.waitForChatGPTComposer(ctx); err != nil {
+		return err
 	}
 	cookies, err := s.readCookiesForURL("https://chatgpt.com/")
 	if err != nil {
@@ -233,16 +240,22 @@ func (s *ChromeSession) PrepareChatGPT() error {
 	return nil
 }
 
-func (s *ChromeSession) RefreshChatGPTCookies() error {
-	if s.spec.ChatGPTCookieFile == "" {
-		return nil
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if err := s.Start(); err != nil {
-		return err
-	}
-	return s.refreshChatGPTCookies()
+func (s *ChromeSession) RestartChatGPT() error {
+	s.MarkProviderUnready()
+	s.Close()
+	return s.prepareChatGPT(false)
+}
+
+func (s *ChromeSession) MarkProviderUnready() {
+	s.stateMu.Lock()
+	s.providerReady = false
+	s.stateMu.Unlock()
+}
+
+func (s *ChromeSession) markProviderReady() {
+	s.stateMu.Lock()
+	s.providerReady = true
+	s.stateMu.Unlock()
 }
 
 func (s *ChromeSession) refreshChatGPTCookies() error {
@@ -272,53 +285,20 @@ func (s *ChromeSession) refreshChatGPTCookies() error {
 	return nil
 }
 
-func (s *ChromeSession) PersistChatGPTCookies() error {
-	if s.spec.ChatGPTCookieFile == "" {
-		return nil
-	}
-	pageContext, err := s.chatGPTPageContext()
-	if err != nil {
-		return err
-	}
-	if pageContext == nil {
-		pageContext = s.ctx
-	}
-	cookies, err := s.readCookiesForURLContext(pageContext, "https://chatgpt.com/")
-	if err != nil {
-		return err
-	}
-	return persistDomainCookieFile(s.spec.ChatGPTCookieFile, cookies, "chatgpt.com")
-}
-
 func (s *ChromeSession) PressChatGPTEnter(submitNonce string) error {
 	encodedNonce, err := json.Marshal(submitNonce)
 	if err != nil {
 		return err
 	}
 	// The extension may reload an existing ChatGPT tab before preparing the
-	// composer. Attach after that navigation so CDP observes the live document.
+	// composer. The session context owns that same tab and survives navigation.
 	time.Sleep(2 * time.Second)
 	predicate := fmt.Sprintf(`document.querySelector("#prompt-textarea")?.dataset.aistudioSubmitNonce === %s`, encodedNonce)
 	deadline := time.Now().Add(30 * time.Second)
 	var lastErr error
 	probeLogged := false
-	if targets, err := chromedp.Targets(s.ctx); err == nil {
-		for _, candidate := range targets {
-			log.Printf("ChatGPT submit target browser=%s port=%d type=%s matchesOrigin=%t", s.spec.ID, s.port, candidate.Type, strings.HasPrefix(candidate.URL, "https://chatgpt.com/"))
-		}
-	}
 	for time.Now().Before(deadline) {
-		tabContext, targetErr := s.chatGPTPageContext()
-		if targetErr != nil {
-			lastErr = targetErr
-			time.Sleep(100 * time.Millisecond)
-			continue
-		}
-		if tabContext == nil {
-			time.Sleep(100 * time.Millisecond)
-			continue
-		}
-		ctx, cancel := context.WithTimeout(tabContext, time.Until(deadline))
+		ctx, cancel := context.WithTimeout(s.ctx, 2*time.Second)
 		var ready bool
 		lastErr = chromedp.Run(ctx, chromedp.Evaluate(predicate, &ready))
 		if !probeLogged {
@@ -344,24 +324,32 @@ func (s *ChromeSession) PressChatGPTEnter(submitNonce string) error {
 	return fmt.Errorf("ChatGPT composer did not become ready: %w", lastErr)
 }
 
-func (s *ChromeSession) chatGPTPageContext() (context.Context, error) {
-	s.chatMu.Lock()
-	defer s.chatMu.Unlock()
-	if s.chatCtx != nil {
-		return s.chatCtx, nil
-	}
-	targets, err := chromedp.Targets(s.ctx)
+func (s *ChromeSession) ChatGPTTransport() (map[string]any, error) {
+	cookies, err := s.readCookiesForURL("https://chatgpt.com/")
 	if err != nil {
 		return nil, err
 	}
-	for _, candidate := range targets {
-		if candidate.Type == "page" && strings.HasPrefix(candidate.URL, "https://chatgpt.com/") {
-			s.chatCtx, s.chatCancel = chromedp.NewContext(s.ctx, chromedp.WithTargetID(candidate.TargetID))
-			return s.chatCtx, nil
+	if s.spec.ChatGPTCookieFile != "" {
+		if err := persistDomainCookieFile(s.spec.ChatGPTCookieFile, cookies, "chatgpt.com"); err != nil {
+			return nil, fmt.Errorf("persist ChatGPT cookies: %w", err)
 		}
 	}
-	return nil, nil
+	values := make([]string, 0, len(cookies))
+	for _, cookie := range cookies {
+		values = append(values, cookie.Name+"="+cookie.Value)
+	}
+	var identity struct {
+		UserAgent string `json:"userAgent"`
+	}
+	if err := chromedp.Run(s.ctx, chromedp.Evaluate(`({userAgent:navigator.userAgent})`, &identity)); err != nil {
+		return nil, err
+	}
+	return map[string]any{
+		"cookies":   strings.Join(values, "; "),
+		"userAgent": identity.UserAgent,
+	}, nil
 }
+
 func (s *ChromeSession) Snapshot() (map[string]any, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -466,13 +454,6 @@ func (s *ChromeSession) currentURL() string {
 func (s *ChromeSession) Close() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.chatMu.Lock()
-	if s.chatCancel != nil {
-		s.chatCancel()
-		s.chatCancel = nil
-		s.chatCtx = nil
-	}
-	s.chatMu.Unlock()
 	if s.cancel != nil {
 		s.cancel()
 		s.cancel = nil

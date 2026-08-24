@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/hamed/aistudio-api/internal/aistudio"
+	"github.com/hamed/aistudio-api/internal/chatgptdirect"
 	"github.com/hamed/aistudio-api/internal/chatgptweb"
 	"net/http"
 	"os"
@@ -16,10 +17,17 @@ type Server struct {
 	pool      *Pool
 	dashboard *Dashboard
 	chat      chatCompleter
+	direct    directChatCompleter
+	directErr error
 }
 
 type chatCompleter interface {
 	Generate(context.Context, string, string) (chatgptweb.Result, error)
+	GenerateImage(context.Context, string, string) (chatgptweb.Result, error)
+}
+
+type directChatCompleter interface {
+	Generate(context.Context, chatgptdirect.Input) (chatgptdirect.Result, error)
 }
 
 func NewServer(service *Service, pool *Pool, dashboard *Dashboard) *Server {
@@ -27,14 +35,29 @@ func NewServer(service *Service, pool *Pool, dashboard *Dashboard) *Server {
 	if factoryOrigin == "" {
 		factoryOrigin = "http://127.0.0.1:3345"
 	}
-	return &Server{service: service, pool: pool, dashboard: dashboard, chat: chatgptweb.NewClient(factoryOrigin)}
+	proxyURL := os.Getenv("AISTUDIO_PROXY_URL")
+	if proxyURL == "" {
+		proxyURL = os.Getenv("LAB_PROXY_URL")
+	}
+	direct, directErr := chatgptdirect.NewClient(factoryOrigin, proxyURL)
+	return &Server{
+		service:   service,
+		pool:      pool,
+		dashboard: dashboard,
+		chat:      chatgptweb.NewClient(factoryOrigin),
+		direct:    direct,
+		directErr: directErr,
+	}
 }
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	s.dashboard.Register(mux)
 	mux.HandleFunc("/health", s.health)
 	mux.HandleFunc("/generate-content", s.legacy)
+	mux.HandleFunc("/v1/models", s.openAIModels)
+	mux.HandleFunc("/v1/models/", s.openAIModels)
 	mux.HandleFunc("/v1/chat/completions", s.chatCompletions)
+	mux.HandleFunc("/v1/images/generations", s.imageGenerations)
 	mux.HandleFunc("/v1/projects/", s.vertex)
 	return mux
 }

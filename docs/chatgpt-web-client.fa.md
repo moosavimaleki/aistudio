@@ -1,118 +1,145 @@
-# کلاینت ChatGPT Web: فلو، مرزها و Smoke Test
+# کلاینت ChatGPT: معماری و Smoke Test
 
-این سند معماری کلاینت session-based وب ChatGPT را توضیح می‌دهد. این قابلیت فقط در آزمایشگاه و روی مسیر staging اجرا می‌شود.
+این قابلیت فقط برای تست end-to-end در آزمایشگاه staging است و نباید در
+production یا برای دورزدن سامانه‌های ضدربات استفاده شود.
 
-## اصل طراحی
+## دو مسیر مستقل
 
-Go یک کلاینت HTTP تقلیدی برای endpoint خصوصی ChatGPT نیست. Go فقط API عمومی آزمایشگاه، صف job، profileها، timeout و تبدیل پاسخ را مدیریت می‌کند. درخواست واقعی ChatGPT را صفحه‌ی واقعی `chatgpt.com` در Chrome می‌سازد.
+API دو رفتار صریح دارد:
 
-هیچ‌کدام از موارد زیر در پروژه پیاده‌سازی نمی‌شوند:
-
-- ساخت یا بازسازی Sentinel، Proof-of-Work، Turnstile یا Arkose
-- TLS یا browser fingerprint impersonation
-- استخراج access token و headerهای محافظتی از HAR یا Chrome
-- ارسال مستقیم `/backend-api/f/conversation` از Go
-- reuse کردن tokenهای متعلق به درخواست دیگر
-
-## شواهد HAR
-
-capture فعلی این endpointهای اصلی را نشان می‌دهد:
-
-| مرحله | endpoint صفحه | مالک مرحله در معماری ما |
+| مدل API | سازنده و فرستندهٔ درخواست نهایی | کاربرد |
 |---|---|---|
-| آماده‌سازی گفتگو | `POST /backend-api/f/conversation/prepare` | خود صفحه ChatGPT |
-| آماده‌سازی الزامات | `POST /backend-api/sentinel/chat-requirements/prepare` | خود صفحه ChatGPT |
-| نهایی‌سازی الزامات | `POST /backend-api/sentinel/chat-requirements/finalize` | خود صفحه ChatGPT |
-| درخواست Sentinel | `POST /backend-api/sentinel/req` | خود صفحه ChatGPT |
-| تولید پاسخ واردشده | `POST /backend-api/f/conversation` | خود صفحه ChatGPT |
-| تولید پاسخ anonymous | `POST /backend-anon/f/conversation` | خود صفحه ChatGPT |
-| فهرست گفتگوها | `GET /backend-api/conversations` | خود صفحه ChatGPT |
+| `chatgpt-web` | صفحهٔ واقعی `chatgpt.com` در Chrome | تست کاملاً UI-based و تولید تصویر |
+| `chatgpt/gpt-5.6` و مدل‌های هم‌خانواده | کلاینت Go | تست مستقیم schema، SSE و conversation API |
 
-پاسخ conversation از نوع `text/event-stream` است. capture فعلی eventهای `delta_encoding` و `delta` دارد. متن پاسخ در patchهای `p/o/v` و عمدتاً در مسیر `/message/content/parts/0` با عمل `append` می‌آید.
+در مسیر مستقیم، Go payload و هر دو درخواست
+`POST /backend-api/f/conversation/prepare` و
+`POST /backend-api/f/conversation` را می‌سازد. مرورگر فقط artifactهای تازه و
+وابسته به همان turn را با اجرای طبیعی frontend آماده می‌کند:
 
-## تفاوت با gpt4free
+- session cookie و Authorization
+- Sentinel prepare/proof و Turnstile، در صورت درخواست خود سایت
+- headerهای واقعی prepare و final شامل client، build، device و session
+- user agent، client hints و اطلاعات صفحه
 
-provider بررسی‌شده در gpt4free این کارها را انجام می‌دهد:
+شناسهٔ `x-oai-turn-trace-id` در Go یک بار برای هر turn ساخته و روی هر دو
+درخواست استفاده می‌شود. `x-conduit-token` نیز خروجی prepare واقعی Go است.
 
-1. یک HTTP session با impersonation کروم می‌سازد.
-2. `conversation/prepare` را مستقیم صدا می‌زند.
-3. نسخه‌ی قدیمی `sentinel/chat-requirements` را مستقیم صدا می‌زند.
-4. در صورت نیاز Proof-of-Work، Turnstile یا Arkose را تولید یا استخراج می‌کند.
-5. headerهای محافظتی را روی درخواست مستقیم conversation قرار می‌دهد.
-6. SSE را خارج از مرورگر parse می‌کند.
+هیچ challenge، Proof-of-Work، Turnstile یا Sentinel در Go حل، بازسازی یا
+شبیه‌سازی نمی‌شود. artifactها cache یا reuse نیز نمی‌شوند.
 
-مراحل ۱ تا ۵ در این پروژه ممنوع و حذف شده‌اند. فقط ایده‌ی عمومی parsing stream با قرارداد واقعی HAR مقایسه شده است. ضمن اینکه HAR جدید نشان می‌دهد endpoint قدیمی chat-requirements به فلو `prepare/finalize` تغییر کرده و کپی provider قدیمی شکننده خواهد بود.
-
-## الگوریتم مجاز
+## فلو مستقیم Go
 
 ```text
 OpenAI-compatible request
         |
         v
-Go gateway: validate + render messages
+Go: validate model/messages/conversation IDs
         |
         v
-browser-interface job (kind=chatgpt.generate)
+Chrome extension: submit a marked UI turn
         |
         v
-Chrome extension service worker
+native ChatGPT frontend: build prepare/final headers + protected challenges
         |
         v
-content script: arm capture + fill composer + click Send
+extension captures prepare and final before network
+and returns synthetic success responses to the UI
         |
         v
-real ChatGPT page: prepare + Sentinel + conversation
+Go: fresh cookies + captured headers + current payloads
         |
         v
-MAIN-world observer: clone only the conversation response
+Chrome-compatible TLS/HTTP2 transport through the same proxy
         |
         v
-SSE parser -> text -> job result -> OpenAI response
+/backend-api/f/conversation/prepare -> fresh conduit token
+        |
+        v
+/backend-api/f/conversation -> SSE parser -> OpenAI response
 ```
 
-MAIN-world observer فقط `window.fetch` را مشاهده می‌کند. ورودی، header و response اصلی را تغییر نمی‌دهد. از response یک clone خوانده می‌شود تا UI همان پاسخ طبیعی را دریافت کند. اگر stream به‌دلیل handoff یا retry داخلی صفحه متن نهایی نداشته باشد، content script متن آخرین پیام assistant را از DOM واقعی صفحه می‌خواند؛ status شبکه همچنان از همان response صفحه گزارش می‌شود.
+TLS و HTTP/2 کلاینت Go با نزدیک‌ترین profile رسمی به Chrome 136 کانتینر، فعلاً Chrome 133،
+ارسال می‌شود. User-Agent و client hint از Chrome واقعی کانتینر گرفته می‌شوند؛
+این فقط رفتار transport مرورگر را در تست e2e بازتولید می‌کند و challenge solver
+نیست. proxy مرورگر و Go باید یکی باشد تا session و IP از هم جدا نشوند.
 
-هر profile در نسخه‌ی اول فقط یک job هم‌زمان دارد. پیش از job، تب ChatGPT به صفحه‌ی شروع برمی‌گردد تا درخواست stateless باشد. model واقعی توسط UI انتخاب می‌شود؛ API فعلاً نتیجه را با نام `chatgpt-web` گزارش می‌کند و model خصوصی در payload ساخته نمی‌شود.
+## challenge و health
 
-## Cookie و session
+اگر صفحهٔ واقعی روی `Just a moment...` یا Turnstile بماند، profile آماده اعلام
+نمی‌شود. `/health` در این حالت `503` و در فیلد `warmError` علت را گزارش می‌کند.
+مرورگر نیز پی‌درپی restart نمی‌شود تا challenge طبیعی فرصت تکمیل داشته باشد.
+پس از ظاهرشدن composer، monitor همان profile را بدون restart به حالت `READY`
+برمی‌گرداند. API مستقیم تا آن زمان نیز سریعاً `503` می‌دهد.
 
-fleet مرورگرها مستقل است. هر فایل `COOKIES/*.txt` یک Chrome مخصوص AI Studio و هر فایل `CHATGPT_COOKIES/*.txt` یک Chrome مخصوص ChatGPT می‌سازد. مثلاً دو فایل Google و یک فایل ChatGPT در مجموع سه process مرورگر ایجاد می‌کنند.
+## مدل‌ها
 
-پیش از job، cookieها داخل Chrome مستقل ChatGPT اعمال می‌شوند. پس از پاسخ موفق، cookieهای چرخیده‌ی `chatgpt.com` به همان فایل برمی‌گردند.
+- `chatgpt/gpt-5.6`: مدل پایهٔ مستقیم
+- `chatgpt/gpt-5.6-thinking`: حالت thinking با effort توسعه‌یافته
+- `chatgpt/gpt-5.6-pro`: alias عمومی Pro روی قرارداد زندهٔ
+  `gpt-5-6-thinking` با `thinking_effort=extended`
+- `chatgpt-web`: مسیر کاملاً UI-based
 
-## قرارداد API آزمایشگاه
+نام‌های عمومی API از slug خصوصی upstream جدا هستند تا تغییر نام داخلی سایت
+به قرارداد client نشت نکند.
 
-درخواست اولیه:
+## ادامهٔ conversation
 
-```http
-POST /v1/chat/completions
-Content-Type: application/json
+Go state چت را نگه نمی‌دارد. در turn اول `conversation_id` خالی است؛ backend
+شناسهٔ واقعی conversation و شناسهٔ پیام assistant را برمی‌گرداند. client باید
+آن‌ها را برای turn بعدی ارسال کند:
 
+```json
 {
-  "model": "chatgpt-web",
+  "model": "chatgpt/gpt-5.6-pro",
+  "conversation_id": "<id from previous response>",
+  "parent_message_id": "<assistant message id from previous response>",
   "messages": [
-    {"role": "user", "content": "Reply with exactly: OK"}
+    {"role": "user", "content": "Continue the same conversation"}
   ]
 }
 ```
 
-نسخه‌ی اول text-only است. `stream=true` نیز پذیرفته می‌شود، اما تا زمانی که bridge streaming داخلی اضافه شود پاسخ به‌صورت یک chunk با header `X-Lab-Streaming-Mode: buffered` برمی‌گردد.
+این شناسه‌ها در `lab_metadata.conversation_id` و
+`lab_metadata.parent_message_id` پاسخ قرار دارند. در continuation فقط پیام
+جدید ارسال می‌شود؛ history مالک backend ChatGPT است.
 
-## Smoke Test مرحله‌ای
+## Cookie و profile
 
-Smoke معتبر باید این gateها را به‌ترتیب اثبات کند:
+هر فایل `CHATGPT_COOKIES/*.txt` یک Chrome مستقل می‌سازد. اولین فایل profile
+`chatgpt`، فایل دوم `chatgpt2` و به همین ترتیب است. cookie اولیه از Netscape
+وارد می‌شود و پس از bootstrap، profile دائمی Chrome مالک session و cookieهای
+چرخیده است.
 
-1. `POST /v1/chat/completions` در gateway پذیرفته شود.
-2. job با `kind=chatgpt.generate` به profile درست dispatch شود.
-3. content script روی `chatgpt.com` پیام job را دریافت کند.
-4. composer آماده باشد و کلیک Send رخ دهد.
-5. observer درخواست دقیق `/backend-api/f/conversation` را ببیند.
-6. status پاسخ صفحه `200` و content type آن SSE باشد.
-7. حداقل یک patch متن parse شود.
-8. API محلی پاسخ `200` سازگار با OpenAI برگرداند.
+## نمونه‌ها
 
-trace مجاز فقط شامل `jobId`، `browserId`، `kind`، phase، HTTP status و مدت زمان است. prompt، cookie، token، Authorization و headerهای Sentinel نباید log شوند.
+تست دو turn مستقیم:
 
-## نتیجه Smoke اولیه
+```bash
+CHATGPT_MODEL=chatgpt/gpt-5.6-pro python examples/chatgpt_openai.py
+```
 
-Smoke اولیه در gate دوم/سوم شکست خورد و API محلی `502` داد. متن timeout متعلق به channel قدیمی AI Studio بود؛ بنابراین درخواست هنوز به `/backend-api/f/conversation` نرسیده بود. قدم بعدی ثبت trace امن در مرز dispatch و اصلاح routing است. تا قبل از مشاهده‌ی status واقعی conversation، این smoke موفق محسوب نمی‌شود.
+همان مثال با مسیر UI:
+
+```bash
+CHATGPT_MODEL=chatgpt-web python examples/chatgpt_openai.py
+```
+
+تولید تصویر فقط UI-based است:
+
+```bash
+python examples/chatgpt_image.py
+```
+
+## معیار Smoke معتبر
+
+1. health مرورگر و gateway هر دو `200` باشند.
+2. frontend واقعی prepare و challengeهای لازم را بدون خطای UI اجرا کند.
+3. درخواست مستقیم Go از همان proxy با status `200` و SSE برگردد.
+4. parser deltaهای کامل و فشردهٔ `p/o/v` را بخواند.
+5. turn دوم با IDهای turn اول همان conversation را ادامه دهد.
+6. prompt، cookie، Authorization و tokenهای محافظتی در log ثبت نشوند.
+
+تست قرارداد Go، افزونه، race detector و `go vet` باید پیش از smoke زنده پاس
+شوند. Smoke زنده تنها وقتی معتبر است که Chrome نیز `READY` باشد؛ عبور مصنوعی
+از challenge نتیجهٔ آزمایش را نامعتبر می‌کند.

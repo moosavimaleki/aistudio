@@ -1,8 +1,11 @@
 package browserinterface
 
 import (
+	"context"
 	"fmt"
+	"log"
 	"sync"
+	"time"
 )
 
 type Fleet struct {
@@ -144,14 +147,85 @@ func (f *Fleet) Healthy() bool {
 }
 
 func healthyStatuses(statuses []map[string]any) bool {
+	required := map[string]bool{}
+	healthy := map[string]bool{}
 	for _, status := range statuses {
+		provider, _ := status["provider"].(string)
+		if provider == "" {
+			provider = ProviderAIStudio
+		}
+		required[provider] = true
 		connected, _ := status["connected"].(bool)
 		ready, _ := status["ready"].(bool)
 		if connected && ready {
-			return true
+			healthy[provider] = true
 		}
 	}
-	return false
+	for provider := range required {
+		if !healthy[provider] {
+			return false
+		}
+	}
+	return len(required) > 0
+}
+
+func (f *Fleet) MonitorChatGPT(ctx context.Context) {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+	failures := map[string]int{}
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			for _, spec := range f.config.Browsers {
+				if spec.Provider != ProviderChatGPT {
+					continue
+				}
+				session := f.sessions[spec.ID]
+				health := f.broker.Health(spec.ID)
+				pendingJobs, _ := health["pendingJobs"].(int)
+				if pendingJobs > 0 {
+					// Reloading chatgpt.com can briefly pause the extension heartbeat.
+					// An in-flight job owns this browser and must not be interrupted.
+					failures[spec.ID] = 0
+					continue
+				}
+				connected, _ := health["connected"].(bool)
+				if connected && session.Ready() {
+					failures[spec.ID] = 0
+					continue
+				}
+				if connected && session.refreshChatGPTReady() {
+					f.setWarmError(spec.ID, nil)
+					failures[spec.ID] = 0
+					continue
+				}
+				if isChatGPTChallengeError(f.warmError(spec.ID)) {
+					failures[spec.ID] = 0
+					continue
+				}
+				failures[spec.ID]++
+				if failures[spec.ID] < 3 {
+					continue
+				}
+				failures[spec.ID] = 0
+				log.Printf("restarting unavailable ChatGPT browser %s", spec.ID)
+				if err := session.RestartChatGPT(); err != nil {
+					f.setWarmError(spec.ID, err)
+					log.Printf("ChatGPT browser %s restart failed: %v", spec.ID, err)
+					continue
+				}
+				f.setWarmError(spec.ID, nil)
+			}
+		}
+	}
+}
+
+func (f *Fleet) warmError(id string) string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.warmErrors[id]
 }
 
 func sessionState(ready bool, health map[string]any) string {

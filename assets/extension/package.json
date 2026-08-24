@@ -1,9 +1,9 @@
 {
   "name": "aistudio-container-extension",
   "private": true,
-  "version": "0.2.6",
+  "version": "0.3.3",
   "scripts": {
-    "pretest": "python3 build.py",
+    "pretest": "go run ../../cmd/build-extension -source . -config ../../config/upstream.yaml",
     "test": "node --test tests/*.test.cjs"
   }
 }

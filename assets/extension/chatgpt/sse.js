@@ -6,6 +6,7 @@
     let text = "";
     let conversationId = "";
     let upstreamError = "";
+    let completed = false;
 
     function push(chunk) {
       buffer += chunk.replace(/\r\n/g, "\n");
@@ -41,7 +42,11 @@
     }
 
     function applyPatch(patch) {
-      if (patch?.p === "" && patch?.o === "patch" && Array.isArray(patch.v)) {
+      if (Array.isArray(patch)) {
+        patch.forEach(applyPatch);
+        return;
+      }
+      if (patch?.p === "" && Array.isArray(patch.v)) {
         patch.v.forEach(applyPatch);
         return;
       }
@@ -49,15 +54,19 @@
         text += patch.v;
         return;
       }
-      if (patch?.p !== "" || patch?.o !== "add" || !patch.v || typeof patch.v !== "object") return;
+      if (patch?.p === "/message/status" && patch.v === "finished_successfully") completed = true;
+      if (patch?.p === "/message/end_turn" && patch.v === true) completed = true;
+      if (patch?.p === "/message/metadata" && patch.v?.is_complete === true) completed = true;
+      if (patch?.p !== "" || !patch.v || typeof patch.v !== "object") return;
       if (typeof patch.v.conversation_id === "string") conversationId = patch.v.conversation_id;
       const message = patch.v.message;
       const initial = message?.content?.parts?.[0];
       if (message?.author?.role === "assistant" && typeof initial === "string") text = initial;
       if (typeof patch.v.error?.message === "string") upstreamError = patch.v.error.message;
+      if (message?.status === "finished_successfully" || message?.end_turn === true || message?.metadata?.is_complete === true) completed = true;
     }
 
-    return { push, finish };
+    return { push, finish, isComplete: () => completed };
   }
 
   const api = { createParser };

@@ -7,7 +7,10 @@
     responseSource: "aistudio-container-token-bridge-page",
     jobMessage: "AISTUDIO_CONTAINER_TOKEN_JOB",
     chatJobKind: "chatgpt.generate",
+    chatImageJobKind: "chatgpt.generate_image",
+    chatDirectJobKind: "chatgpt.prepare_direct",
     chatJobMessage: "CHATGPT_CONTAINER_CHAT_JOB",
+    chatReadyMessage: "CHATGPT_CONTAINER_READY",
     chatRequestSource: "chatgpt-container-bridge-extension",
     chatResponseSource: "chatgpt-container-bridge-page",
     keepAlivePort: "aistudio-container-bridge-keepalive",
@@ -69,7 +72,7 @@
       if (finish) finish(event.data);
     });
 
-    function capture(jobId) {
+    function capture(jobId, options = {}) {
       let cancel;
       const result = new Promise((resolve) => {
         const timeout = setTimeout(() => {
@@ -85,7 +88,7 @@
           resolve(value);
         });
       });
-      pageWindow.postMessage({ source: protocol.chatRequestSource, jobId }, origin);
+      pageWindow.postMessage({ source: protocol.chatRequestSource, jobId, ...options }, origin);
       return { result, cancel };
     }
 
@@ -102,7 +105,7 @@
 
 (() => {
   async function prepare(prompt, submitNonce, timeoutMs = 45_000) {
-    await acceptCookieConsent();
+    await ready();
     const composer = await waitFor(() => document.querySelector("#prompt-textarea"), timeoutMs);
     composer.focus();
     selectContents(composer);
@@ -112,6 +115,22 @@
     }
     composer.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: prompt }));
     composer.dataset.aistudioSubmitNonce = submitNonce;
+  }
+
+  async function ready() {
+    await acceptCookieConsent();
+    await dismissBlockingDialog();
+    return Boolean(document.querySelector("#prompt-textarea"));
+  }
+
+  async function dismissBlockingDialog() {
+    const button = [...document.querySelectorAll("button")].find((candidate) => {
+      const label = candidate.textContent?.trim().toLowerCase();
+      return label === "got it" || label === "close";
+    });
+    if (!button) return;
+    button.click();
+    await new Promise((resolve) => setTimeout(resolve, 250));
   }
 
   async function acceptCookieConsent() {
@@ -125,14 +144,67 @@
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
 
-  async function readLastAssistant(timeoutMs = 60_000) {
-    const node = await waitFor(() => {
+  function assistantCount() {
+    return document.querySelectorAll('[data-message-author-role="assistant"]').length;
+  }
+
+  function imageSources() {
+    return new Set([...document.images].map((image) => image.currentSrc).filter(Boolean));
+  }
+
+  async function readGeneratedImages(previousSources, timeoutMs = 90_000) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const source = [...document.images]
+        .find((image) => image.naturalWidth >= 64 && !previousSources.has(image.currentSrc))?.currentSrc;
+      if (source) return [await readImage(source)];
+      await delay(250);
+    }
+    return [];
+  }
+
+  async function readImage(source) {
+    const response = await fetch(source, { credentials: "include" });
+    if (!response.ok) throw new Error(`ChatGPT image download returned HTTP ${response.status}`);
+    const blob = await response.blob();
+    if (!blob.type.startsWith("image/")) throw new Error("ChatGPT image download returned a non-image response");
+    const dataURL = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(reader.error || new Error("ChatGPT image could not be encoded"));
+      reader.readAsDataURL(blob);
+    });
+    const separator = String(dataURL).indexOf(",");
+    return { mimeType: blob.type, data: String(dataURL).slice(separator + 1) };
+  }
+
+  async function readLastAssistant(afterCount, timeoutMs = 30_000) {
+    const deadline = Date.now() + timeoutMs;
+    let stableText = "";
+    let stableSince = 0;
+    while (Date.now() < deadline) {
       const messages = [...document.querySelectorAll('[data-message-author-role="assistant"]')];
+      if (messages.length <= afterCount) {
+        await delay(100);
+        continue;
+      }
       const last = messages.at(-1);
       const content = last?.querySelector(".markdown") || last;
-      return content?.innerText?.trim() ? content : null;
-    }, timeoutMs);
-    return node.innerText.trim();
+      const text = content?.innerText?.trim() || "";
+      if (text !== stableText) {
+        stableText = text;
+        stableSince = Date.now();
+      }
+      if (text && !isGenerating() && Date.now() - stableSince >= 1_000) return text;
+      await delay(100);
+    }
+    throw new Error("ChatGPT final assistant message did not become ready");
+  }
+
+  function isGenerating() {
+    return Boolean(document.querySelector(
+      '[data-testid="stop-button"], [data-testid="stop-generating-button"], button[aria-label*="Stop"]',
+    ));
   }
 
   function selectContents(element) {
@@ -148,12 +220,14 @@
     while (Date.now() < deadline) {
       const value = find();
       if (value) return value;
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await delay(100);
     }
     throw new Error(errorMessage);
   }
 
-  const api = { prepare, readLastAssistant };
+  const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+  const api = { ready, prepare, assistantCount, imageSources, readGeneratedImages, readLastAssistant };
   globalThis.ChatGPTComposer = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })();
@@ -167,6 +241,12 @@
 	globalThis.AIStudioKeepAlive.startKeepAlive(chrome.runtime, protocol.keepAlivePort);
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (message?.type === protocol.chatReadyMessage) {
+      Promise.resolve(globalThis.ChatGPTComposer?.ready?.())
+        .then((ready) => sendResponse({ ready: Boolean(ready) }))
+        .catch(() => sendResponse({ ready: false }));
+      return true;
+    }
     if (message?.type !== protocol.chatJobMessage) return false;
     run(message).then(sendResponse);
     return true;
@@ -174,12 +254,30 @@
 
   async function run(job) {
     if (typeof job.prompt !== "string" || !job.prompt.trim()) return { error: "ChatGPT prompt is empty" };
-    const capture = channel.capture(job.jobId);
+    const previousAssistantCount = globalThis.ChatGPTComposer.assistantCount();
+    const previousImages = globalThis.ChatGPTComposer.imageSources();
+    const capture = channel.capture(job.jobId, {
+      direct: job.direct === true,
+      model: job.model,
+      conversationId: job.conversationId,
+      parentMessageId: job.parentMessageId,
+      thinkingEffort: job.thinkingEffort,
+    });
     try {
       await globalThis.ChatGPTComposer.prepare(job.prompt, job.submitNonce || job.jobId);
       const result = await capture.result;
-      if (result.error || result.text?.trim()) return result;
-      return { ...result, text: await globalThis.ChatGPTComposer.readLastAssistant() };
+      if (result.error) return result;
+      if (job.direct) return result;
+      if (job.expectImage) {
+        const images = await globalThis.ChatGPTComposer.readGeneratedImages(previousImages);
+        if (!images.length) return { error: "ChatGPT page returned no generated image" };
+        return { ...result, images };
+      }
+      try {
+        return { ...result, text: await globalThis.ChatGPTComposer.readLastAssistant(previousAssistantCount) };
+      } catch (_error) {
+        return result;
+      }
     } catch (error) {
       capture.cancel();
       return { error: error instanceof Error ? error.message : String(error) };

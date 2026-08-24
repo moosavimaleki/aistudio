@@ -8,22 +8,143 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hamed/aistudio-api/internal/chatgptdirect"
 	"github.com/hamed/aistudio-api/internal/chatgptweb"
 )
 
 type chatStub struct {
-	prompt string
+	prompt      string
+	imagePrompt string
+	err         error
+}
+
+type directChatStub struct {
+	input chatgptdirect.Input
+	err   error
+}
+
+func (s *directChatStub) Generate(_ context.Context, input chatgptdirect.Input) (chatgptdirect.Result, error) {
+	s.input = input
+	if s.err != nil {
+		return chatgptdirect.Result{}, s.err
+	}
+	return chatgptdirect.Result{
+		Text:            "direct answer",
+		ConversationID:  "conversation-2",
+		ParentMessageID: "message-2",
+		BrowserID:       "chatgpt",
+		Model:           input.Model,
+		UpstreamStatus:  http.StatusOK,
+		UpstreamPath:    "/backend-api/f/conversation",
+	}, nil
+}
+
+func TestOpenAIDirectChatPreservesBridgeStatus(t *testing.T) {
+	direct := &directChatStub{err: &chatgptdirect.BridgeError{
+		Status:  http.StatusServiceUnavailable,
+		Message: "browser is not ready",
+	}}
+	server := &Server{chat: &chatStub{}, direct: direct}
+	body := `{"model":"chatgpt/gpt-5.6-pro","messages":[{"role":"user","content":"hello"}]}`
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body)))
+
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
 }
 
 func (s *chatStub) Generate(_ context.Context, prompt, _ string) (chatgptweb.Result, error) {
 	s.prompt = prompt
-	return chatgptweb.Result{Text: "answer", BrowserID: "default", ConversationID: "c1"}, nil
+	return chatgptweb.Result{Text: "answer", BrowserID: "chatgpt", ConversationID: "c1", UpstreamStatus: 200}, s.err
+}
+
+func (s *chatStub) GenerateImage(_ context.Context, prompt, _ string) (chatgptweb.Result, error) {
+	s.imagePrompt = prompt
+	return chatgptweb.Result{
+		Images:         []chatgptweb.Image{{MIMEType: "image/png", Data: "aW1hZ2U="}},
+		BrowserID:      "chatgpt",
+		ConversationID: "c1",
+		UpstreamStatus: 200,
+	}, s.err
+}
+
+func TestOpenAIModels(t *testing.T) {
+	server := &Server{chat: &chatStub{}}
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/models", nil))
+
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"id":"chatgpt-web"`) {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestOpenAIChatCompletionsBufferedStream(t *testing.T) {
+	server := &Server{chat: &chatStub{}}
+	body := `{"model":"chatgpt-web","stream":true,"messages":[{"role":"user","content":"hello"}]}`
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body)))
+
+	if response.Code != http.StatusOK || response.Header().Get("X-Lab-Streaming-Mode") != "buffered" {
+		t.Fatalf("status=%d headers=%v body=%s", response.Code, response.Header(), response.Body.String())
+	}
+	if strings.Count(response.Body.String(), "data: ") != 3 || !strings.Contains(response.Body.String(), `"finish_reason":"stop"`) {
+		t.Fatalf("unexpected stream: %s", response.Body.String())
+	}
+}
+
+func TestOpenAIChatCompletionsRejectsUnsupportedRole(t *testing.T) {
+	server := &Server{chat: &chatStub{}}
+	body := `{"model":"chatgpt-web","messages":[{"role":"tool","content":"hello"}]}`
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body)))
+
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "unsupported message role") {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestOpenAIChatCompletionsPreservesBridgeStatus(t *testing.T) {
+	server := &Server{chat: &chatStub{err: &chatgptweb.BridgeError{Status: http.StatusGatewayTimeout, Message: "timeout"}}}
+	body := `{"model":"chatgpt-web","messages":[{"role":"user","content":"hello"}]}`
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body)))
+
+	if response.Code != http.StatusGatewayTimeout {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestOpenAIImageGeneration(t *testing.T) {
+	chat := &chatStub{}
+	server := &Server{chat: chat}
+	body := `{"model":"chatgpt-web","prompt":"draw a circle","response_format":"b64_json"}`
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/images/generations", strings.NewReader(body)))
+
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"b64_json":"aW1hZ2U="`) {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	if !strings.Contains(chat.imagePrompt, "Generate one image") {
+		t.Fatalf("unexpected image prompt: %q", chat.imagePrompt)
+	}
+}
+
+func TestOpenAIImageGenerationRejectsMultipleImages(t *testing.T) {
+	server := &Server{chat: &chatStub{}}
+	body := `{"model":"chatgpt-web","prompt":"draw","n":2}`
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/images/generations", strings.NewReader(body)))
+
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "only one image") {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
 }
 
 func TestOpenAIChatCompletions(t *testing.T) {
 	chat := &chatStub{}
 	server := &Server{chat: chat}
-	body := `{"model":"anything","messages":[{"role":"system","content":"be brief"},{"role":"user","content":"hello"}]}`
+	body := `{"model":"chatgpt-web","messages":[{"role":"system","content":"be brief"},{"role":"user","content":"hello"}]}`
 	response := httptest.NewRecorder()
 	server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body)))
 
@@ -39,5 +160,33 @@ func TestOpenAIChatCompletions(t *testing.T) {
 	}
 	if value["object"] != "chat.completion" || value["model"] != "chatgpt-web" {
 		t.Fatalf("unexpected response: %#v", value)
+	}
+}
+
+func TestOpenAIDirectChatContinuesConversation(t *testing.T) {
+	direct := &directChatStub{}
+	server := &Server{chat: &chatStub{}, direct: direct}
+	body := `{
+		"model":"chatgpt/gpt-5.6-pro",
+		"browser_id":"chatgpt",
+		"conversation_id":"conversation-1",
+		"parent_message_id":"message-1",
+		"messages":[{"role":"user","content":"continue"}]
+	}`
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(
+		response,
+		httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body)),
+	)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	if direct.input.ConversationID != "conversation-1" || direct.input.ParentMessageID != "message-1" {
+		t.Fatalf("continuation was not forwarded: %#v", direct.input)
+	}
+	if !strings.Contains(response.Body.String(), `"parent_message_id":"message-2"`) ||
+		!strings.Contains(response.Body.String(), `"transport":"go-direct"`) {
+		t.Fatalf("missing continuation metadata: %s", response.Body.String())
 	}
 }

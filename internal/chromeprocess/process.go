@@ -29,14 +29,18 @@ func (p *Process) Start() error {
 	}
 	runtime := defaultValue(os.Getenv("CHROME_RUNTIME_DIR"), "/app/browser-profiles")
 	profile := filepath.Join(runtime, "profiles", p.BrowserID)
-	extension := filepath.Join(runtime, "extensions", p.BrowserID)
+	source := defaultValue(os.Getenv("EXTENSION_SOURCE_DIR"), "/app/extension")
+	extension, err := extensionDirectory(source, runtime, p.BrowserID)
+	if err != nil {
+		return err
+	}
 	if err := os.MkdirAll(profile, 0755); err != nil {
 		return err
 	}
 	for _, name := range []string{"SingletonLock", "SingletonCookie", "SingletonSocket"} {
 		_ = os.Remove(filepath.Join(profile, name))
 	}
-	if err := copyExtension(defaultValue(os.Getenv("EXTENSION_SOURCE_DIR"), "/app/extension"), extension, p.BrowserID); err != nil {
+	if err := copyExtension(source, extension, p.BrowserID); err != nil {
 		return err
 	}
 	args := []string{"--no-sandbox", "--disable-gpu", "--no-first-run", "--no-default-browser-check", "--disable-search-engine-choice-screen", "--remote-debugging-address=127.0.0.1", fmt.Sprintf("--remote-debugging-port=%d", p.Port), "--user-data-dir=" + profile, "--disable-extensions-except=" + extension, "--load-extension=" + extension, "about:blank"}
@@ -48,6 +52,23 @@ func (p *Process) Start() error {
 		return err
 	}
 	return p.waitReady()
+}
+
+func extensionDirectory(source, runtime, browserID string) (string, error) {
+	data, err := os.ReadFile(filepath.Join(source, "manifest.json"))
+	if err != nil {
+		return "", err
+	}
+	var manifest struct {
+		Version string `json:"version"`
+	}
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		return "", fmt.Errorf("read extension manifest: %w", err)
+	}
+	if manifest.Version == "" {
+		return "", fmt.Errorf("extension manifest has no version")
+	}
+	return filepath.Join(runtime, "extensions", browserID, manifest.Version), nil
 }
 func (p *Process) Stop() {
 	if !p.Running() {

@@ -7,7 +7,10 @@
     responseSource: "aistudio-container-token-bridge-page",
     jobMessage: "AISTUDIO_CONTAINER_TOKEN_JOB",
     chatJobKind: "chatgpt.generate",
+    chatImageJobKind: "chatgpt.generate_image",
+    chatDirectJobKind: "chatgpt.prepare_direct",
     chatJobMessage: "CHATGPT_CONTAINER_CHAT_JOB",
+    chatReadyMessage: "CHATGPT_CONTAINER_READY",
     chatRequestSource: "chatgpt-container-bridge-extension",
     chatResponseSource: "chatgpt-container-bridge-page",
     keepAlivePort: "aistudio-container-bridge-keepalive",
@@ -26,6 +29,7 @@
     let text = "";
     let conversationId = "";
     let upstreamError = "";
+    let completed = false;
 
     function push(chunk) {
       buffer += chunk.replace(/\r\n/g, "\n");
@@ -61,7 +65,11 @@
     }
 
     function applyPatch(patch) {
-      if (patch?.p === "" && patch?.o === "patch" && Array.isArray(patch.v)) {
+      if (Array.isArray(patch)) {
+        patch.forEach(applyPatch);
+        return;
+      }
+      if (patch?.p === "" && Array.isArray(patch.v)) {
         patch.v.forEach(applyPatch);
         return;
       }
@@ -69,15 +77,19 @@
         text += patch.v;
         return;
       }
-      if (patch?.p !== "" || patch?.o !== "add" || !patch.v || typeof patch.v !== "object") return;
+      if (patch?.p === "/message/status" && patch.v === "finished_successfully") completed = true;
+      if (patch?.p === "/message/end_turn" && patch.v === true) completed = true;
+      if (patch?.p === "/message/metadata" && patch.v?.is_complete === true) completed = true;
+      if (patch?.p !== "" || !patch.v || typeof patch.v !== "object") return;
       if (typeof patch.v.conversation_id === "string") conversationId = patch.v.conversation_id;
       const message = patch.v.message;
       const initial = message?.content?.parts?.[0];
       if (message?.author?.role === "assistant" && typeof initial === "string") text = initial;
       if (typeof patch.v.error?.message === "string") upstreamError = patch.v.error.message;
+      if (message?.status === "finished_successfully" || message?.end_turn === true || message?.metadata?.is_complete === true) completed = true;
     }
 
-    return { push, finish };
+    return { push, finish, isComplete: () => completed };
   }
 
   const api = { createParser };
@@ -91,41 +103,133 @@
 (() => {
   const protocol = globalThis.AIStudioBridgeProtocol;
   const nativeFetch = window.fetch;
-  let waitingJob = "";
+  let waitingJob = null;
 
   window.addEventListener("message", (event) => {
     if (event.source !== window || event.origin !== location.origin) return;
     if (event.data?.source !== protocol.chatRequestSource) return;
-    if (typeof event.data.jobId === "string") waitingJob = event.data.jobId;
+    if (typeof event.data.jobId !== "string") return;
+    waitingJob = {
+      id: event.data.jobId,
+      direct: event.data.direct === true,
+      model: stringValue(event.data.model),
+      conversationId: stringValue(event.data.conversationId),
+      parentMessageId: stringValue(event.data.parentMessageId),
+      thinkingEffort: stringValue(event.data.thinkingEffort),
+    };
   });
 
   window.fetch = async function (...args) {
-    const upstreamPath = conversationPath(args[0]);
+    const path = requestPath(args[0]);
+    const job = waitingJob;
+    if (job?.direct && path === "/backend-api/f/conversation/prepare") {
+      return capturePrepare(args, job);
+    }
     try {
+      if (job?.direct && isConversationPath(path)) {
+        waitingJob = null;
+        try {
+          post(job.id, await directTransport(args, path, job));
+        } catch (error) {
+          post(job.id, { error: message(error) });
+        }
+        return delegatedResponse();
+      }
       const response = await Reflect.apply(nativeFetch, this, args);
-      if (upstreamPath && waitingJob) {
-        const jobId = waitingJob;
-        waitingJob = "";
-        observe(response.clone(), jobId, upstreamPath);
+      if (isConversationPath(path) && waitingJob) {
+        const jobId = waitingJob.id;
+        waitingJob = null;
+        observe(response.clone(), jobId, path);
       }
       return response;
     } catch (error) {
-      if (upstreamPath && waitingJob) {
-        post(waitingJob, { error: message(error) });
-        waitingJob = "";
+      if (isConversationPath(path) && waitingJob) {
+        post(waitingJob.id, { error: message(error) });
+        waitingJob = null;
       }
       throw error;
     }
   };
 
-  function conversationPath(input) {
+  function requestPath(input) {
     try {
       const value = typeof input === "string" ? input : input?.url;
-      const path = new URL(value, location.href).pathname;
-      return path === "/backend-api/f/conversation" || path === "/backend-anon/f/conversation" ? path : "";
+      return new URL(value, location.href).pathname;
     } catch (_error) {
       return "";
     }
+  }
+
+  function isConversationPath(path) {
+    return path === "/backend-api/f/conversation" || path === "/backend-anon/f/conversation";
+  }
+
+  async function capturePrepare(args, job) {
+    const request = new Request(args[0], args[1]);
+    job.prepareHeaders = Object.fromEntries(request.headers.entries());
+    return new Response(JSON.stringify({
+      status: "success",
+      conduit_token: `extension-delegated-${job.id}`,
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  async function directTransport(args, upstreamPath, job) {
+    const request = new Request(args[0], args[1]);
+    const headers = Object.fromEntries(request.headers.entries());
+    return {
+      headers,
+      prepareHeaders: job.prepareHeaders || {},
+      upstreamPath,
+      context: {
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        timezoneOffsetMin: new Date().getTimezoneOffset(),
+        acceptLanguage: acceptLanguage(),
+        secCHUA: clientHintBrands(),
+        secCHUAMobile: navigator.userAgentData?.mobile ? "?1" : "?0",
+        secCHUAPlatform: navigator.userAgentData?.platform || navigator.platform,
+        isDarkMode: matchMedia("(prefers-color-scheme: dark)").matches,
+        timeSinceLoaded: Math.max(1, Math.round(performance.now() / 1000)),
+        pageHeight: document.documentElement.clientHeight,
+        pageWidth: document.documentElement.clientWidth,
+        pixelRatio: window.devicePixelRatio,
+        screenHeight: window.screen.height,
+        screenWidth: window.screen.width,
+        hasWebPushCapabilities: "PushManager" in window,
+        webPushNotificationPermission: globalThis.Notification?.permission || "default",
+      },
+    };
+  }
+
+  function delegatedResponse() {
+    const conversationId = crypto.randomUUID();
+    const messageId = crypto.randomUUID();
+    const initial = {
+      p: "",
+      o: "add",
+      v: {
+        conversation_id: conversationId,
+        message: {
+          id: messageId,
+          author: { role: "assistant" },
+          content: { content_type: "text", parts: ["Laboratory Go client received the request."] },
+          status: "finished_successfully",
+          end_turn: true,
+        },
+      },
+    };
+    const stream = [
+      'event: delta_encoding\ndata: "v1"',
+      `event: delta\ndata: ${JSON.stringify(initial)}`,
+      "data: [DONE]",
+      "",
+    ].join("\n\n");
+    return new Response(stream, {
+      status: 200,
+      headers: { "Content-Type": "text/event-stream; charset=utf-8" },
+    });
   }
 
   async function observe(response, jobId, upstreamPath) {
@@ -145,6 +249,10 @@
         const { done, value } = await reader.read();
         if (done) break;
         parser.push(decoder.decode(value, { stream: true }));
+        if (parser.isComplete()) {
+          reader.cancel().catch(() => {});
+          break;
+        }
       }
       parser.push(decoder.decode());
       const result = parser.finish();
@@ -161,6 +269,22 @@
 
   function message(error) {
     return error instanceof Error ? error.message : String(error);
+  }
+
+  function stringValue(value) {
+    return typeof value === "string" ? value : "";
+  }
+
+  function clientHintBrands() {
+    const brands = navigator.userAgentData?.brands || [];
+    return brands.map((item) => `"${item.brand}";v="${item.version}"`).join(", ");
+  }
+
+  function acceptLanguage() {
+    return navigator.languages.map((language, index) => {
+      if (index === 0) return language;
+      return `${language};q=${Math.max(0.1, 1 - index / 10).toFixed(1)}`;
+    }).join(",");
   }
 })();
 

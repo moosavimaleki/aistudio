@@ -11,11 +11,13 @@
 > controlled lab. Even in a lab, every upstream route, Token Factory, and proxy
 > must resolve exclusively to staging.
 
-Go gateway سازگار با Vertex که Chrome، افزونه AI Studio، Token Factory و
-GenerateContent را در یک کانتینر اجرا می‌کند. Redis تنها سرویس جانبی است.
+Go gateway سازگار با Vertex و OpenAI که Chromeهای مستقل AI Studio و ChatGPT،
+افزونه مرورگر، Token Factory و APIها را در یک کانتینر اجرا می‌کند. Redis تنها
+سرویس جانبی است.
 
-A Vertex-compatible Go gateway running Chrome, the AI Studio extension, Token
-Factory, and GenerateContent in one container. Redis is the only side service.
+A Vertex- and OpenAI-compatible Go gateway running independent AI Studio and
+ChatGPT Chrome profiles, the browser extension, Token Factory, and APIs in one
+container. Redis is the only side service.
 
 ## نمونه کامل Docker Compose / Complete Docker Compose example
 
@@ -55,6 +57,10 @@ services:
       AISTUDIO_AUTH_USER2: "0"
       AISTUDIO_DEFAULT_BROWSER_ID: ""
 
+      # ChatGPT Web profiles (optional)
+      CHATGPT_COOKIE_DIR: "/app/chatgpt-cookies"
+      CHATGPT_DEFAULT_BROWSER_ID: ""
+
       # Chrome runtime
       CHROME_EXECUTABLE: "/usr/bin/google-chrome"
       CHROME_RUNTIME_DIR: "/app/browser-profiles"
@@ -72,6 +78,7 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./COOKIES:/app/cookies
+      - ./CHATGPT_COOKIES:/app/chatgpt-cookies
       - browser_profiles:/app/browser-profiles
     group_add:
       - "${COOKIE_WRITER_GID:-1000}"
@@ -128,6 +135,23 @@ AISTUDIO_DEFAULT_BROWSER_ID: "browser2"
 AISTUDIO_AUTH_USER2: "0"
 ```
 
+برای ChatGPT نیز در یک Chrome جدا وارد حساب آزمایشگاهی شوید، cookieهای
+`chatgpt.com` را با همان افزونه و قالب Netscape استخراج و در
+`CHATGPT_COOKIES/*.txt` قرار دهید. فایل اول `chatgpt` و فایل دوم `chatgpt2`
+است. دو فایل Google و یک فایل ChatGPT دقیقاً سه process مرورگر مستقل می‌سازند.
+
+برای استخراج خودکار تمام sessionهای سالم ChatGPT از profileهای محلی Chrome،
+بدون چاپ مقدار cookie یا token:
+
+```bash
+python scripts/import_chatgpt_cookies.py --dry-run
+python scripts/import_chatgpt_cookies.py
+docker compose restart aistudio
+```
+
+هر فایل خروجی یک Chrome مستقل در کانتینر می‌سازد؛ بنابراین پیش از import تعداد
+sessionهای گزارش‌شده توسط `--dry-run` را با ظرفیت CPU و RAM میزبان تطبیق دهید.
+
 ### ۳. اجرا و بررسی
 
 فایل بالا را با نام `compose.yaml` ذخیره و اجرا کنید:
@@ -137,11 +161,24 @@ docker compose up -d
 docker compose ps
 curl http://127.0.0.1:3345/health
 curl http://127.0.0.1:3346/health
+curl http://127.0.0.1:3346/v1/models
 ```
 
 - API اصلی: `http://127.0.0.1:3346`
 - Browser/Token Factory API: `http://127.0.0.1:3345`
 - noVNC اختیاری: `http://127.0.0.1:7900`
+
+نمونهٔ مستقیم ChatGPT با continuation دو مرحله‌ای:
+
+```bash
+python examples/chatgpt_openai.py
+```
+
+برای مسیر کاملاً UI-based:
+
+```bash
+CHATGPT_MODEL=chatgpt-web python examples/chatgpt_openai.py
+```
 
 اگر proxy روی پورت دیگری است، هر دو متغیر `LAB_PROXY_URL` و
 `AISTUDIO_PROXY_URL` را با هم تغییر دهید. روی Linux، مقدار `extra_hosts` را
@@ -177,6 +214,12 @@ AISTUDIO_DEFAULT_BROWSER_ID: "browser2"
 AISTUDIO_AUTH_USER2: "0"
 ```
 
+For ChatGPT, sign in to the staging lab account in a separate Chrome profile,
+export the `chatgpt.com` cookies with the same extension in Netscape format,
+and place them under `CHATGPT_COOKIES/*.txt`. The first file becomes `chatgpt`,
+the second `chatgpt2`. Two Google files plus one ChatGPT file create exactly
+three independent Chrome processes.
+
 ### 3. Start and verify
 
 Save the complete example above as `compose.yaml`, then run:
@@ -186,11 +229,24 @@ docker compose up -d
 docker compose ps
 curl http://127.0.0.1:3345/health
 curl http://127.0.0.1:3346/health
+curl http://127.0.0.1:3346/v1/models
 ```
 
 - Main API: `http://127.0.0.1:3346`
 - Browser/Token Factory API: `http://127.0.0.1:3345`
 - Optional noVNC UI: `http://127.0.0.1:7900`
+
+Direct ChatGPT example with a two-turn continuation:
+
+```bash
+python examples/chatgpt_openai.py
+```
+
+For the fully UI-based route:
+
+```bash
+CHATGPT_MODEL=chatgpt-web python examples/chatgpt_openai.py
+```
 
 If your staging proxy uses another port, change both `LAB_PROXY_URL` and
 `AISTUDIO_PROXY_URL` together. On Linux, keep the `extra_hosts` mapping.

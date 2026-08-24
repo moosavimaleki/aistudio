@@ -4,6 +4,12 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      extra_hosts:
+        - "host.docker.internal:host-gateway"
+      args:
+        HTTP_PROXY: "${BUILD_PROXY_URL:-http://host.docker.internal:10811}"
+        HTTPS_PROXY: "${BUILD_PROXY_URL:-http://host.docker.internal:10811}"
+        NO_PROXY: "localhost,127.0.0.1"
     container_name: aistudio-api
     ports:
       - "127.0.0.1:3345:3345"

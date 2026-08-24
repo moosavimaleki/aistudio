@@ -6,6 +6,12 @@
 	globalThis.AIStudioKeepAlive.startKeepAlive(chrome.runtime, protocol.keepAlivePort);
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (message?.type === protocol.chatReadyMessage) {
+      Promise.resolve(globalThis.ChatGPTComposer?.ready?.())
+        .then((ready) => sendResponse({ ready: Boolean(ready) }))
+        .catch(() => sendResponse({ ready: false }));
+      return true;
+    }
     if (message?.type !== protocol.chatJobMessage) return false;
     run(message).then(sendResponse);
     return true;
@@ -13,12 +19,30 @@
 
   async function run(job) {
     if (typeof job.prompt !== "string" || !job.prompt.trim()) return { error: "ChatGPT prompt is empty" };
-    const capture = channel.capture(job.jobId);
+    const previousAssistantCount = globalThis.ChatGPTComposer.assistantCount();
+    const previousImages = globalThis.ChatGPTComposer.imageSources();
+    const capture = channel.capture(job.jobId, {
+      direct: job.direct === true,
+      model: job.model,
+      conversationId: job.conversationId,
+      parentMessageId: job.parentMessageId,
+      thinkingEffort: job.thinkingEffort,
+    });
     try {
       await globalThis.ChatGPTComposer.prepare(job.prompt, job.submitNonce || job.jobId);
       const result = await capture.result;
-      if (result.error || result.text?.trim()) return result;
-      return { ...result, text: await globalThis.ChatGPTComposer.readLastAssistant() };
+      if (result.error) return result;
+      if (job.direct) return result;
+      if (job.expectImage) {
+        const images = await globalThis.ChatGPTComposer.readGeneratedImages(previousImages);
+        if (!images.length) return { error: "ChatGPT page returned no generated image" };
+        return { ...result, images };
+      }
+      try {
+        return { ...result, text: await globalThis.ChatGPTComposer.readLastAssistant(previousAssistantCount) };
+      } catch (_error) {
+        return result;
+      }
     } catch (error) {
       capture.cancel();
       return { error: error instanceof Error ? error.message : String(error) };

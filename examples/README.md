@@ -19,6 +19,43 @@ python examples/system_instruction.py
 python examples/structured_json.py
 python examples/one_file.py
 python examples/multiple_files.py
+python examples/chatgpt_openai.py
+python examples/chatgpt_200_questions.py
+python examples/chatgpt_image.py
+```
+
+`chatgpt_openai.py` دو turn متوالی OpenAI-compatible را اجرا می‌کند. حالت
+پیش‌فرض `chatgpt/gpt-5.6-pro` است: درخواست نهایی را Go می‌فرستد و Chrome فقط
+artifactهای محافظت‌شدهٔ تازه را آماده می‌کند. مثال IDهای conversation و parent
+پاسخ اول را به turn دوم می‌دهد؛ gateway هیچ state محلی برای چت نگه نمی‌دارد.
+برای تست مسیر کاملاً UI-based از دستور زیر استفاده کنید:
+
+```bash
+CHATGPT_MODEL=chatgpt-web python examples/chatgpt_openai.py
+```
+
+هر دو حالت به `CHATGPT_COOKIES/*.txt` نیاز دارند. مقصد با
+`OPENAI_BASE_URL`، profile با `CHATGPT_BROWSER_ID` و timeout با
+`OPENAI_TIMEOUT` قابل تغییر است.
+
+`chatgpt_200_questions.py` به‌صورت پیش‌فرض ۲۰۰ سؤال را ذیل یک conversation
+می‌فرستد و میان هر دو سؤال یک ثانیه صبر می‌کند. با `Ctrl+C` متوقف می‌شود.
+برای smoke کوتاه‌تر یا تغییر فاصله:
+
+```bash
+CHATGPT_QUESTION_COUNT=3 CHATGPT_DELAY_SECONDS=1 \
+python examples/chatgpt_200_questions.py
+```
+
+`chatgpt_image.py` تصویر تولیدشده توسط خود صفحهٔ ChatGPT را از API
+`/v1/images/generations` دریافت و در `chatgpt-image.jpg` ذخیره می‌کند. فرمت
+واقعی تصویر را خود UI ChatGPT تعیین می‌کند؛ هنگام تعیین مسیر دلخواه، پسوند را
+با فرمت خروجی هماهنگ کنید. برای تغییر prompt و مسیر خروجی:
+
+```bash
+CHATGPT_IMAGE_PROMPT='A small watercolor fox reading a book' \
+CHATGPT_IMAGE_OUTPUT=/tmp/fox.jpg \
+python examples/chatgpt_image.py
 ```
 
 ## SDK رسمی `google-genai`

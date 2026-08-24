@@ -11,16 +11,31 @@ import (
 )
 
 type Result struct {
-	Text           string `json:"text"`
-	ConversationID string `json:"conversationId"`
-	BrowserID      string `json:"browserId"`
-	UpstreamStatus int    `json:"upstreamStatus"`
-	UpstreamPath   string `json:"upstreamPath"`
+	Text           string  `json:"text"`
+	Images         []Image `json:"images"`
+	ConversationID string  `json:"conversationId"`
+	BrowserID      string  `json:"browserId"`
+	UpstreamStatus int     `json:"upstreamStatus"`
+	UpstreamPath   string  `json:"upstreamPath"`
+}
+
+type Image struct {
+	MIMEType string `json:"mimeType"`
+	Data     string `json:"data"`
 }
 
 type Client struct {
 	endpoint string
 	http     *http.Client
+}
+
+type BridgeError struct {
+	Status  int
+	Message string
+}
+
+func (e *BridgeError) Error() string {
+	return fmt.Sprintf("ChatGPT browser bridge returned HTTP %d: %s", e.Status, e.Message)
 }
 
 func NewClient(factoryOrigin string) *Client {
@@ -31,7 +46,15 @@ func NewClient(factoryOrigin string) *Client {
 }
 
 func (c *Client) Generate(ctx context.Context, prompt, browserID string) (Result, error) {
-	body, err := json.Marshal(map[string]string{"prompt": prompt, "browserId": browserID})
+	return c.generate(ctx, prompt, browserID, false)
+}
+
+func (c *Client) GenerateImage(ctx context.Context, prompt, browserID string) (Result, error) {
+	return c.generate(ctx, prompt, browserID, true)
+}
+
+func (c *Client) generate(ctx context.Context, prompt, browserID string, image bool) (Result, error) {
+	body, err := json.Marshal(map[string]any{"prompt": prompt, "browserId": browserID, "image": image})
 	if err != nil {
 		return Result{}, err
 	}
@@ -53,7 +76,7 @@ func (c *Client) Generate(ctx context.Context, prompt, browserID string) (Result
 		if failure.Error == "" {
 			failure.Error = http.StatusText(response.StatusCode)
 		}
-		return Result{}, fmt.Errorf("ChatGPT browser bridge returned HTTP %d: %s", response.StatusCode, failure.Error)
+		return Result{}, &BridgeError{Status: response.StatusCode, Message: failure.Error}
 	}
 	var result Result
 	if err := json.NewDecoder(response.Body).Decode(&result); err != nil {

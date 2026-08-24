@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"github.com/hamed/aistudio-api/internal/browserinterface"
 	"github.com/hamed/aistudio-api/internal/metrics"
 	"log"
@@ -28,7 +29,12 @@ func main() {
 		log.Fatal(err)
 	}
 	defer fleet.Close()
-	go fleet.Warm()
+	monitorContext, stopMonitor := context.WithCancel(context.Background())
+	defer stopMonitor()
+	go func() {
+		fleet.Warm()
+		fleet.MonitorChatGPT(monitorContext)
+	}()
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "3345"

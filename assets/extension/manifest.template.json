@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "AI Studio Container Token Bridge",
-  "version": "0.2.6",
+  "version": "0.3.3",
   "description": "Internal staging bridge between the container Chrome and Token Factory",
   "permissions": ["tabs"],
   "host_permissions": [

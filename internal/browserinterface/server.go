@@ -24,10 +24,41 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/bootstrap", s.bootstrap)
 	mux.HandleFunc("/get-token", s.token)
 	mux.HandleFunc("/internal/chatgpt/generate", s.chatGenerate)
+	mux.HandleFunc("/internal/chatgpt/prepare", s.chatPrepare)
 	mux.HandleFunc("/internal/browsers/", s.resetBrowser)
 	mux.HandleFunc("/internal/jobs/next", s.next)
 	mux.HandleFunc("/internal/jobs/", s.complete)
 	return mux
+}
+
+func (s *Server) chatPrepare(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodPost {
+		writer.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	body, ok := decodeBody(writer, request)
+	if !ok {
+		return
+	}
+	result, err := s.chat.PrepareDirect(request.Context(), DirectChatRequest{
+		BrowserID:       stringValue(body["browserId"]),
+		Prompt:          stringValue(body["prompt"]),
+		Model:           stringValue(body["model"]),
+		ConversationID:  stringValue(body["conversationId"]),
+		ParentMessageID: stringValue(body["parentMessageId"]),
+		ThinkingEffort:  stringValue(body["thinkingEffort"]),
+	})
+	if err != nil {
+		status := http.StatusBadGateway
+		if strings.Contains(err.Error(), "deadline exceeded") {
+			status = http.StatusGatewayTimeout
+		} else if strings.Contains(err.Error(), "not ready") {
+			status = http.StatusServiceUnavailable
+		}
+		writeError(writer, status, err)
+		return
+	}
+	writeJSON(writer, http.StatusOK, result)
 }
 
 func (s *Server) chatGenerate(writer http.ResponseWriter, request *http.Request) {
@@ -39,7 +70,16 @@ func (s *Server) chatGenerate(writer http.ResponseWriter, request *http.Request)
 	if !ok {
 		return
 	}
-	result, err := s.chat.Generate(request.Context(), stringValue(body["browserId"]), stringValue(body["prompt"]))
+	prompt := stringValue(body["prompt"])
+	browserID := stringValue(body["browserId"])
+	expectImage, _ := body["image"].(bool)
+	var result map[string]any
+	var err error
+	if expectImage {
+		result, err = s.chat.GenerateImage(request.Context(), browserID, prompt)
+	} else {
+		result, err = s.chat.Generate(request.Context(), browserID, prompt)
+	}
 	if err != nil {
 		status := http.StatusBadGateway
 		if strings.Contains(err.Error(), "deadline exceeded") {
@@ -167,7 +207,14 @@ func (s *Server) complete(writer http.ResponseWriter, request *http.Request) {
 		writeError(writer, http.StatusNotFound, fmtError("job is no longer pending"))
 		return
 	}
-	log.Printf("extension job completed id=%s browser=%s error=%t upstreamStatus=%s", id, browserID, stringValue(body["error"]) != "", stringValue(body["upstreamStatus"]))
+	errMessage := stringValue(body["error"])
+	log.Printf(
+		"extension job completed id=%s browser=%s error=%q upstreamStatus=%s",
+		id,
+		browserID,
+		errMessage,
+		stringValue(body["upstreamStatus"]),
+	)
 	writer.WriteHeader(http.StatusNoContent)
 }
 func decodeBody(writer http.ResponseWriter, request *http.Request) (map[string]any, bool) {

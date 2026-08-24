@@ -11,7 +11,7 @@
       if (finish) finish(event.data);
     });
 
-    function capture(jobId) {
+    function capture(jobId, options = {}) {
       let cancel;
       const result = new Promise((resolve) => {
         const timeout = setTimeout(() => {
@@ -27,7 +27,7 @@
           resolve(value);
         });
       });
-      pageWindow.postMessage({ source: protocol.chatRequestSource, jobId }, origin);
+      pageWindow.postMessage({ source: protocol.chatRequestSource, jobId, ...options }, origin);
       return { result, cancel };
     }
 
