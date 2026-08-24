@@ -14,6 +14,10 @@
       direct: event.data.direct === true,
     };
     waitingJob = job;
+    window.postMessage({
+      source: protocol.chatCaptureReadySource,
+      jobId: job.id,
+    }, location.origin);
   });
 
   window.fetch = async function (...args) {

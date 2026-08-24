@@ -12,6 +12,7 @@
     chatJobMessage: "CHATGPT_CONTAINER_CHAT_JOB",
     chatReadyMessage: "CHATGPT_CONTAINER_READY",
     chatRequestSource: "chatgpt-container-bridge-extension",
+    chatCaptureReadySource: "chatgpt-container-bridge-ready",
     chatResponseSource: "chatgpt-container-bridge-page",
     keepAlivePort: "aistudio-container-bridge-keepalive",
   });
@@ -67,29 +68,50 @@
 
     pageWindow.addEventListener("message", (event) => {
       if (event.source !== pageWindow || event.origin !== origin) return;
-      if (event.data?.source !== protocol.chatResponseSource) return;
-      const finish = pending.get(event.data.jobId);
-      if (finish) finish(event.data);
+      const capture = pending.get(event.data?.jobId);
+      if (!capture) return;
+      if (event.data.source === protocol.chatCaptureReadySource) {
+        capture.arm();
+        return;
+      }
+      if (event.data.source === protocol.chatResponseSource) capture.finish(event.data);
     });
 
     function capture(jobId, options = {}) {
-      let cancel;
+      let arm;
+      let finish;
+      let resultTimeout;
+      let readyTimeout;
+      const ready = new Promise((resolve, reject) => {
+        readyTimeout = setTimeout(() => {
+          pending.delete(jobId);
+          reject(new Error("ChatGPT page hook did not become ready"));
+        }, Math.min(timeoutMs, 10_000));
+        arm = () => {
+          clearTimeout(readyTimeout);
+          resolve();
+        };
+      });
       const result = new Promise((resolve) => {
-        const timeout = setTimeout(() => {
+        resultTimeout = setTimeout(() => {
           pending.delete(jobId);
           resolve({ error: "ChatGPT page timed out while waiting for its native response" });
         }, timeoutMs);
-        cancel = () => {
-          clearTimeout(timeout);
+        finish = (value) => {
+          arm();
+          clearTimeout(resultTimeout);
           pending.delete(jobId);
-        };
-        pending.set(jobId, (value) => {
-          cancel();
           resolve(value);
-        });
+        };
       });
+      const cancel = () => {
+        arm();
+        clearTimeout(resultTimeout);
+        pending.delete(jobId);
+      };
+      pending.set(jobId, { arm, finish });
       pageWindow.postMessage({ source: protocol.chatRequestSource, jobId, ...options }, origin);
-      return { result, cancel };
+      return { ready, result, cancel };
     }
 
     return { capture };
@@ -285,6 +307,7 @@
       direct,
     });
     try {
+      await capture.ready;
       if (direct) {
         await globalThis.ChatGPTComposer.submitProbe(job.submitNonce || job.jobId);
         const result = await capture.result;

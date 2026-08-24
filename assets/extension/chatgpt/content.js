@@ -28,6 +28,7 @@
       direct,
     });
     try {
+      await capture.ready;
       if (direct) {
         await globalThis.ChatGPTComposer.submitProbe(job.submitNonce || job.jobId);
         const result = await capture.result;

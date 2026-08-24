@@ -12,6 +12,7 @@
     chatJobMessage: "CHATGPT_CONTAINER_CHAT_JOB",
     chatReadyMessage: "CHATGPT_CONTAINER_READY",
     chatRequestSource: "chatgpt-container-bridge-extension",
+    chatCaptureReadySource: "chatgpt-container-bridge-ready",
     chatResponseSource: "chatgpt-container-bridge-page",
     keepAlivePort: "aistudio-container-bridge-keepalive",
   });
@@ -114,6 +115,10 @@
       direct: event.data.direct === true,
     };
     waitingJob = job;
+    window.postMessage({
+      source: protocol.chatCaptureReadySource,
+      jobId: job.id,
+    }, location.origin);
   });
 
   window.fetch = async function (...args) {
