@@ -21,7 +21,7 @@ MODEL = os.getenv("CHATGPT_MODEL", "chatgpt/gpt-5.6-pro")
 TIMEOUT = float(os.getenv("OPENAI_TIMEOUT", "240"))
 DELAY_SECONDS = float(os.getenv("CHATGPT_DUAL_DELAY_SECONDS", "2"))
 TURN_LIMIT = int(os.getenv("CHATGPT_DUAL_TURN_LIMIT", "0"))
-DEFAULT_BROWSER_ID = os.getenv("CHATGPT_BROWSER_ID", "chatgpt12")
+DEFAULT_BROWSER_ID = os.getenv("CHATGPT_BROWSER_ID", "")
 
 
 @dataclass
@@ -59,6 +59,7 @@ def complete(participant: Participant, prompt: str) -> str:
         raise RuntimeError(f"{participant.name} failed with HTTP {error.code}: {detail}") from error
 
     metadata = result["lab_metadata"]
+    participant.browser_id = metadata["browser_id"]
     participant.conversation_id = metadata["conversation_id"]
     participant.parent_message_id = metadata["parent_message_id"]
     return result["choices"][0]["message"]["content"]

@@ -8,16 +8,18 @@ import urllib.request
 
 base_url = os.getenv("OPENAI_BASE_URL", "http://127.0.0.1:3346").rstrip("/")
 model = os.getenv("CHATGPT_MODEL", "chatgpt/gpt-5.6-pro")
-browser_id = os.getenv("CHATGPT_BROWSER_ID", "chatgpt")
+browser_id = os.getenv("CHATGPT_BROWSER_ID", "")
 timeout = float(os.getenv("OPENAI_TIMEOUT", "240"))
 
 
-def complete(messages, conversation_id="", parent_message_id=""):
+def complete(messages, conversation_id="", parent_message_id="", selected_browser_id=""):
     payload = {
         "model": model,
-        "browser_id": browser_id,
         "messages": messages,
     }
+    requested_browser_id = selected_browser_id or browser_id
+    if requested_browser_id:
+        payload["browser_id"] = requested_browser_id
     if conversation_id:
         payload["conversation_id"] = conversation_id
         payload["parent_message_id"] = parent_message_id
@@ -52,6 +54,7 @@ else:
         [{"role": "user", "content": "What was the code word?"}],
         metadata["conversation_id"],
         metadata["parent_message_id"],
+        metadata["browser_id"],
     )
 
 print("turn 2:", second["choices"][0]["message"]["content"])

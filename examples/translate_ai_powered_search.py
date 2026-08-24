@@ -228,7 +228,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--target", type=Path, default=TARGET_DIRECTORY)
     parser.add_argument("--base-url", default=os.getenv("OPENAI_BASE_URL", DEFAULT_BASE_URL))
     parser.add_argument("--model", default=os.getenv("CHATGPT_MODEL", DEFAULT_MODEL))
-    parser.add_argument("--browser-id", default=os.getenv("CHATGPT_BROWSER_ID", "chatgpt10"))
+    parser.add_argument(
+        "--browser-id",
+        default=os.getenv("CHATGPT_BROWSER_ID", ""),
+        help="پروفایل ChatGPT؛ خالی یعنی انتخاب خودکار یک پروفایل آماده",
+    )
     parser.add_argument("--timeout", type=float, default=float(os.getenv("OPENAI_TIMEOUT", "600")))
     parser.add_argument("--limit", type=int, default=0, help="تعداد فایل؛ صفر یعنی همه")
     parser.add_argument("--force", action="store_true", help="ترجمه‌های کامل را هم دوباره بساز")
@@ -332,9 +336,10 @@ def create_session(base_url: str, timeout: float, model: str, browser_id: str) -
     _, metadata = complete(base_url, timeout, model, browser_id, messages, None)
     conversation_id = str(metadata.get("conversation_id", ""))
     parent_message_id = str(metadata.get("parent_message_id", ""))
-    if not conversation_id or not parent_message_id:
+    resolved_browser_id = str(metadata.get("browser_id", ""))
+    if not conversation_id or not parent_message_id or not resolved_browser_id:
         raise RuntimeError("Root instruction did not create a usable ChatGPT conversation")
-    return Session(conversation_id, parent_message_id, model, browser_id)
+    return Session(conversation_id, parent_message_id, model, resolved_browser_id)
 
 
 def translation_prompt(source: Path, content: str) -> str:
@@ -380,7 +385,7 @@ def main() -> int:
         print("Creating root translation conversation...", flush=True)
         session = create_session(args.base_url, args.timeout, args.model, args.browser_id)
         save_session(target_root, session)
-    elif session.model != args.model or session.browser_id != args.browser_id:
+    elif session.model != args.model or (args.browser_id and session.browser_id != args.browser_id):
         print("Session model/profile differs; use --reset-session to create a new root.", file=sys.stderr)
         return 2
 

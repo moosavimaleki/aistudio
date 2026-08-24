@@ -1,6 +1,68 @@
 package browserinterface
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
+
+func TestResolveChatGPTRotatesAcrossReadyBrowsersWhenUnspecified(t *testing.T) {
+	broker := NewBroker()
+	broker.heartbeats["chatgpt"] = time.Now()
+	broker.heartbeats["chatgpt2"] = time.Now()
+	fleet := &Fleet{
+		broker: broker,
+		config: Config{
+			ChatGPTDefaultID: "chatgpt",
+			Browsers: []BrowserSpec{
+				{ID: "chatgpt", Provider: ProviderChatGPT},
+				{ID: "chatgpt2", Provider: ProviderChatGPT},
+			},
+		},
+		sessions: map[string]*ChromeSession{
+			"chatgpt":  {spec: BrowserSpec{ID: "chatgpt", Provider: ProviderChatGPT}, providerReady: true},
+			"chatgpt2": {spec: BrowserSpec{ID: "chatgpt2", Provider: ProviderChatGPT}, providerReady: true},
+		},
+	}
+
+	first, err := fleet.ResolveChatGPT("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := fleet.ResolveChatGPT("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first != "chatgpt" || second != "chatgpt2" {
+		t.Fatalf("expected ready browsers to rotate, got %q then %q", first, second)
+	}
+}
+
+func TestResolveChatGPTSkipsDisconnectedBrowser(t *testing.T) {
+	broker := NewBroker()
+	broker.heartbeats["chatgpt2"] = time.Now()
+	fleet := &Fleet{
+		broker: broker,
+		config: Config{
+			ChatGPTDefaultID: "chatgpt",
+			Browsers: []BrowserSpec{
+				{ID: "chatgpt", Provider: ProviderChatGPT},
+				{ID: "chatgpt2", Provider: ProviderChatGPT},
+			},
+		},
+		sessions: map[string]*ChromeSession{
+			"chatgpt":  {spec: BrowserSpec{ID: "chatgpt", Provider: ProviderChatGPT}, providerReady: true},
+			"chatgpt2": {spec: BrowserSpec{ID: "chatgpt2", Provider: ProviderChatGPT}, providerReady: true},
+		},
+	}
+
+	resolved, err := fleet.ResolveChatGPT("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved != "chatgpt2" {
+		t.Fatalf("expected connected browser chatgpt2, got %q", resolved)
+	}
+}
 
 func TestFleetHealthAcceptsAnyReadyBrowser(t *testing.T) {
 	statuses := []map[string]any{

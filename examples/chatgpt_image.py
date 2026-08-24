@@ -16,7 +16,7 @@ payload = {
     "model": "chatgpt-web",
     "prompt": prompt,
     "response_format": "b64_json",
-    "browser_id": os.getenv("CHATGPT_BROWSER_ID", "chatgpt"),
+    "browser_id": os.getenv("CHATGPT_BROWSER_ID", ""),
 }
 request = urllib.request.Request(
     f"{base_url}/v1/images/generations",

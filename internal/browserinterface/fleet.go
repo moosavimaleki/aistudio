@@ -9,11 +9,12 @@ import (
 )
 
 type Fleet struct {
-	broker     *Broker
-	config     Config
-	sessions   map[string]*ChromeSession
-	mu         sync.Mutex
-	warmErrors map[string]string
+	broker      *Broker
+	config      Config
+	sessions    map[string]*ChromeSession
+	mu          sync.Mutex
+	warmErrors  map[string]string
+	chatGPTNext int
 }
 
 func NewFleet(broker *Broker, config Config) *Fleet {
@@ -102,10 +103,7 @@ func (f *Fleet) Resolve(id string) (string, error) {
 
 func (f *Fleet) ResolveChatGPT(id string) (string, error) {
 	if id == "" {
-		id = f.config.ChatGPTDefaultID
-	}
-	if id == "" {
-		return "", fmt.Errorf("No ChatGPT browser profile is configured")
+		return f.resolveAutomaticChatGPT()
 	}
 	session := f.sessions[id]
 	if session == nil || session.Spec().Provider != ProviderChatGPT {

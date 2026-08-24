@@ -10,7 +10,7 @@ from pathlib import Path
 
 base_url = os.getenv("OPENAI_BASE_URL", "http://127.0.0.1:3346").rstrip("/")
 model = os.getenv("CHATGPT_MODEL", "chatgpt/gpt-5.6-pro")
-browser_id = os.getenv("CHATGPT_BROWSER_ID", "chatgpt10")
+browser_id = os.getenv("CHATGPT_BROWSER_ID", "")
 delay_seconds = float(os.getenv("CHATGPT_DELAY_SECONDS", "2"))
 timeout = float(os.getenv("OPENAI_TIMEOUT", "240"))
 questions_file = Path(__file__).with_name("assets") / "chatgpt_200_questions.fa.txt"
@@ -19,9 +19,10 @@ questions_file = Path(__file__).with_name("assets") / "chatgpt_200_questions.fa.
 def complete(prompt, conversation_id="", parent_message_id=""):
     payload = {
         "model": model,
-        "browser_id": browser_id,
         "messages": [{"role": "user", "content": prompt}],
     }
+    if browser_id:
+        payload["browser_id"] = browser_id
     if conversation_id:
         payload["conversation_id"] = conversation_id
         payload["parent_message_id"] = parent_message_id
@@ -58,6 +59,7 @@ try:
             time.sleep(delay_seconds)
         result = complete(questions[number - 1], conversation_id, parent_message_id)
         metadata = result["lab_metadata"]
+        browser_id = metadata["browser_id"]
         conversation_id = metadata["conversation_id"]
         parent_message_id = metadata["parent_message_id"]
         answer = result["choices"][0]["message"]["content"]

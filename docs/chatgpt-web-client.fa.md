@@ -114,6 +114,13 @@ Go state چت را نگه نمی‌دارد. در turn اول `conversation_id` 
 وارد می‌شود و پس از bootstrap، profile دائمی Chrome مالک session و cookieهای
 چرخیده است.
 
+اگر `browser_id` ارسال نشود، فقط برای turn اول یک profile متصل و آماده به
+صورت round-robin انتخاب می‌شود. شناسهٔ انتخاب‌شده در
+`lab_metadata.browser_id` برمی‌گردد و client باید آن را همراه
+`conversation_id` و `parent_message_id` برای turnهای بعدی بفرستد. تغییر profile
+در میانهٔ conversation مجاز نیست، چون conversation متعلق به session همان حساب
+است.
+
 ## نمونه‌ها
 
 تست دو turn مستقیم:

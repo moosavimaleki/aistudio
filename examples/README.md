@@ -36,7 +36,10 @@ CHATGPT_MODEL=chatgpt-web python examples/chatgpt_openai.py
 
 هر دو حالت به `CHATGPT_COOKIES/*.txt` نیاز دارند. مقصد با
 `OPENAI_BASE_URL`، profile با `CHATGPT_BROWSER_ID` و timeout با
-`OPENAI_TIMEOUT` قابل تغییر است.
+`OPENAI_TIMEOUT` قابل تغییر است. اگر `CHATGPT_BROWSER_ID` خالی باشد، درخواست
+اول یک profile آماده را خودکار انتخاب می‌کند؛ مثال‌ها مقدار
+`lab_metadata.browser_id` را برای تمام turnهای همان conversation ثابت نگه
+می‌دارند.
 
 `chatgpt_200_questions.py` به‌صورت پیش‌فرض ۲۰۰ سؤال را ذیل یک conversation
 می‌فرستد و میان هر دو سؤال یک ثانیه صبر می‌کند. با `Ctrl+C` متوقف می‌شود.
