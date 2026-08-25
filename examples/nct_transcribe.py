@@ -1,33 +1,38 @@
 """تبدیل ترتیبی و قابل‌ادامهٔ ویدیوهای NCT به متن آموزشی فارسی.
 
-هر خروجی کنار ویدیوی منبع با پسوند ``.nct.md`` نوشته می‌شود. وجود marker
-پایانی یعنی فایل کامل است؛ بنابراین اجرای دوباره فقط ویدیوهای باقی‌مانده را
-می‌فرستد. خروجی پس از دریافت پاسخ کامل به‌صورت atomic ذخیره می‌شود تا قطع
-شدن process، فایل نیمه‌کاره را به‌عنوان نتیجهٔ کامل ثبت نکند.
+هر خروجی کنار ویدیوی منبع با پسوند ``.nct.md`` نوشته می‌شود. هر خروجی موجود
+و غیرخالی بدون درخواست دوباره skip می‌شود. خروجی پس از دریافت پاسخ کامل
+به‌صورت atomic ذخیره می‌شود تا process فایل نیمه‌کاره ایجاد نکند.
 """
 
 from __future__ import annotations
 
 import argparse
 import os
+import re
 import sys
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 
-from vertex_client import generate_content, inline_data, text
+from nct_uploaded_files import DRIVE_FILES
+from vertex_client import generate_content, text
 
 
 DEFAULT_DIRECTORY = Path("/home/h-mousavi/Videos/NCT")
 SUPPORTED_SUFFIXES = {".mkv", ".mp4", ".webm", ".mov", ".avi"}
 COMPLETE_MARKER = "<!-- nct-transcription: complete -->"
-PROMPT = """این ویدیوی آموزشی روش NCT/نودشماری را به متن مرجع دقیق تبدیل کن.
+PROMPT = """این ویدیوی آموزشی روش NCT/نودشماری را بدون خلاصه‌سازی به متن کامل تبدیل کن.
 
-گفتار گوینده را بدون خلاصه‌سازی، با حفظ ترتیب و جزئیات، زیر بخش‌های
-[صوت گوینده] بنویس. هرجا تصویر، نمودار، نوشته، حرکت روی چارت یا نمایش عملی
-برای فهم آموزش لازم است، توضیح مستقل و دقیق زیر [توضیح تصویر] اضافه کن؛
-چیزهای تزئینی را توضیح نده. خروجی فارسی، پیوسته و مناسب استخراج کانتکست کامل
-روش NCT باشد. در صورت تغییر موضوع، timestamp تقریبی و عنوان کوتاه بخش را اضافه کن."""
+خروجی را مانند زیرنویس زمان‌بندی‌شده بنویس: ابتدای هر قطعهٔ گفتار timestamp دقیق
+[HH:MM:SS] را بیاور و مکث‌های محسوس را به‌شکل [مکث N ثانیه] ثبت کن. گفتار را با
+حفظ ترتیب، جزئیات و اصطلاحات گوینده زیر [صوت گوینده] پیاده کن.
+
+تمام متن‌های خوانای روی صفحه، اسلایدها، جدول‌ها، نمودارها، فرمول‌ها، برچسب‌های
+چارت و نوشته‌های نرم‌افزار را نیز کامل و بدون خلاصه‌سازی زیر [متن صفحه] بنویس.
+حرکت‌ها و اطلاعات تصویری لازم برای فهم آموزش را زیر [توضیح تصویر] شرح بده و
+موارد صرفاً تزئینی را حذف کن. هنگام عوض‌شدن صفحه یا موضوع، timestamp و عنوان
+کوتاه بخش را بیاور. خروجی فارسی و مناسب بازیابی کامل محتوای آموزشی باشد."""
 
 
 def parse_args() -> argparse.Namespace:
@@ -59,9 +64,20 @@ def output_path(video: Path) -> Path:
 
 
 def complete(path: Path) -> bool:
-    if not path.is_file():
-        return False
-    return COMPLETE_MARKER in path.read_text(encoding="utf-8", errors="replace")
+    return path.is_file() and path.stat().st_size > 0
+
+
+def uploaded_file(video: Path) -> tuple[str, str] | None:
+    match = re.search(r"\[([^\[\]]+)\]\s*$", video.stem)
+    return DRIVE_FILES.get(match.group(1)) if match else None
+
+
+def attachment_part(video: Path) -> dict:
+    reference = uploaded_file(video)
+    if not reference:
+        raise ValueError(f"No reusable Drive fileId is registered for {video.name}")
+    file_id, mime_type = reference
+    return {"fileData": {"fileId": file_id, "mimeType": mime_type}}
 
 
 def request_body(video: Path, max_output_tokens: int) -> dict:
@@ -70,7 +86,7 @@ def request_body(video: Path, max_output_tokens: int) -> dict:
             "role": "user",
             "parts": [
                 {"text": PROMPT},
-                {"inlineData": inline_data(video)},
+                attachment_part(video),
             ],
         }],
         "generationConfig": {
@@ -105,6 +121,11 @@ def save_output(video: Path, model: str, transcription: str) -> Path:
 
 
 def transcribe(video: Path, model: str, timeout: float, max_output_tokens: int) -> Path:
+    reference = uploaded_file(video)
+    if reference:
+        print(f"REUSE: Drive fileId={reference[0]}", flush=True)
+    else:
+        print("UPLOAD: no reusable fileId is registered", flush=True)
     response = generate_content(model, request_body(video, max_output_tokens), timeout=timeout)
     transcription = text(response)
     if not transcription.strip():
@@ -119,8 +140,10 @@ def main() -> int:
         print(f"NCT directory does not exist: {directory}", file=sys.stderr)
         return 2
 
+    candidates = videos(directory)
+    reusable = [video for video in candidates if uploaded_file(video)]
     pending = [
-        video for video in videos(directory)
+        video for video in reusable
         if args.force or not complete(output_path(video))
     ]
     if args.limit > 0:
@@ -129,7 +152,8 @@ def main() -> int:
         print("No pending NCT videos.")
         return 0
 
-    print(f"Pending videos: {len(pending)}")
+    print(f"Pending reusable videos: {len(pending)}")
+    print(f"Skipped without fileId: {len(candidates) - len(reusable)}")
     if args.dry_run:
         for video in pending:
             print(f"- {video.name} -> {output_path(video).name}")

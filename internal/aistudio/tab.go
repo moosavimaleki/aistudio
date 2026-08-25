@@ -3,8 +3,11 @@ package aistudio
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -131,6 +134,11 @@ func (t *Tab) Generate(ctx context.Context, input GenerateInput, onChunk func(an
 		encoded, _ := json.Marshal(payload)
 		response, err := t.HTTP.Request(ctx, "POST", rpcURL, headers, encoded)
 		if err != nil {
+			if attempt < 4 && retryableGenerateTransportError(ctx, err) {
+				log.Printf("GenerateContent transport attempt %d failed; retrying with a fresh token: %v", attempt+1, err)
+				time.Sleep(time.Duration(attempt+1) * 150 * time.Millisecond)
+				continue
+			}
 			return GenerateResult{}, err
 		}
 		t.Cookies.ApplyResponse(response)
@@ -171,6 +179,15 @@ func retryableStatus(status int) bool {
 func retryableGenerateStatus(status int) bool {
 	return status != http.StatusTooManyRequests && retryableStatus(status)
 }
+
+func retryableGenerateTransportError(ctx context.Context, err error) bool {
+	if ctx.Err() != nil {
+		return false
+	}
+	var transportError *url.Error
+	return errors.As(err, &transportError)
+}
+
 func InvalidatesTab(err error) bool {
 	value, ok := err.(*ClientError)
 	if !ok {

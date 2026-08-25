@@ -26,7 +26,7 @@ func NewHTTPClient(proxyURL string) (*HTTPClient, error) {
 			return proxy, nil
 		}
 	}
-	return &HTTPClient{client: &http.Client{Transport: transport, Timeout: 90 * time.Second}}, nil
+	return &HTTPClient{client: &http.Client{Transport: transport}}, nil
 }
 
 func localHost(host string) bool {

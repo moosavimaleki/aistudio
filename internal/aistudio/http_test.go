@@ -34,3 +34,13 @@ func TestRequestRetryRetriesTransientStatus(t *testing.T) {
 		t.Fatalf("attempts = %d, want 3", attempts)
 	}
 }
+
+func TestHTTPClientUsesRequestContextDeadline(t *testing.T) {
+	client, err := NewHTTPClient("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if client.client.Timeout != 0 {
+		t.Fatalf("HTTP client timeout = %s, want request context deadline", client.client.Timeout)
+	}
+}
