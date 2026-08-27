@@ -1,4 +1,4 @@
-"""دو turn متوالی با API سازگار با OpenAI و state نگهداری‌شده در client."""
+"""دو turn متوالی با API OpenAI-compatible و conversation خودکار gateway."""
 
 import json
 import os
@@ -12,17 +12,13 @@ browser_id = os.getenv("CHATGPT_BROWSER_ID", "")
 timeout = float(os.getenv("OPENAI_TIMEOUT", "240"))
 
 
-def complete(messages, conversation_id="", parent_message_id="", selected_browser_id=""):
+def complete(messages):
     payload = {
         "model": model,
         "messages": messages,
     }
-    requested_browser_id = selected_browser_id or browser_id
-    if requested_browser_id:
-        payload["browser_id"] = requested_browser_id
-    if conversation_id:
-        payload["conversation_id"] = conversation_id
-        payload["parent_message_id"] = parent_message_id
+    if browser_id:
+        payload["browser_id"] = browser_id
     request = urllib.request.Request(
         f"{base_url}/v1/chat/completions",
         data=json.dumps(payload).encode(),
@@ -42,19 +38,10 @@ first = complete(first_messages)
 first_text = first["choices"][0]["message"]["content"]
 print("turn 1:", first_text)
 
-if model == "chatgpt-web":
-    second_messages = first_messages + [
-        {"role": "assistant", "content": first_text},
-        {"role": "user", "content": "What was the code word?"},
-    ]
-    second = complete(second_messages)
-else:
-    metadata = first["lab_metadata"]
-    second = complete(
-        [{"role": "user", "content": "What was the code word?"}],
-        metadata["conversation_id"],
-        metadata["parent_message_id"],
-        metadata["browser_id"],
-    )
+second_messages = first_messages + [
+    {"role": "assistant", "content": first_text},
+    {"role": "user", "content": "What was the code word?"},
+]
+second = complete(second_messages)
 
 print("turn 2:", second["choices"][0]["message"]["content"])

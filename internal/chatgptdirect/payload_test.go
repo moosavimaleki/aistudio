@@ -29,6 +29,27 @@ func TestBuildPayloadContinuesConversation(t *testing.T) {
 	}
 }
 
+func TestBuildPayloadAddsHistoryForNewBranch(t *testing.T) {
+	model, err := ResolveModel("chatgpt/gpt-5.6-pro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := Input{
+		Model: model.Name, ConversationID: "conversation-root", ParentMessageID: "message-root", IncludeHistory: true,
+		Messages: []Message{
+			{Role: "system", Content: "answer briefly"},
+			{Role: "user", Content: "new question"},
+		},
+	}
+	payload, _, err := buildPayload(input, model, input.ParentMessageID, BrowserContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.Messages) != 2 || payload.Messages[0].Author["role"] != "system" || payload.Messages[1].Author["role"] != "user" {
+		t.Fatalf("new branch must contain its supplied context and user turn: %#v", payload.Messages)
+	}
+}
+
 func TestParseEventStreamReturnsContinuationIDs(t *testing.T) {
 	data := []byte("event: delta\ndata: {\"p\":\"\",\"o\":\"add\",\"v\":{\"conversation_id\":\"c1\",\"message\":{\"id\":\"m1\",\"author\":{\"role\":\"assistant\"},\"content\":{\"parts\":[\"hel\"]}}}}\n\n" +
 		"event: delta\ndata: {\"p\":\"/message/content/parts/0\",\"o\":\"append\",\"v\":\"lo\"}\n\n")

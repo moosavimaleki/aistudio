@@ -20,14 +20,17 @@ python examples/structured_json.py
 python examples/one_file.py
 python examples/multiple_files.py
 python examples/chatgpt_openai.py
+python examples/chatgpt_automatic_conversation.py
 python examples/chatgpt_200_questions.py
 python examples/chatgpt_image.py
 ```
 
 `chatgpt_openai.py` دو turn متوالی OpenAI-compatible را اجرا می‌کند. حالت
 پیش‌فرض `chatgpt/gpt-5.6-pro` است: درخواست نهایی را Go می‌فرستد و Chrome فقط
-artifactهای محافظت‌شدهٔ تازه را آماده می‌کند. مثال IDهای conversation و parent
-پاسخ اول را به turn دوم می‌دهد؛ gateway هیچ state محلی برای چت نگه نمی‌دارد.
+artifactهای محافظت‌شدهٔ تازه را آماده می‌کند. مثال در هر turn کل آرایهٔ استاندارد
+`messages` را می‌فرستد؛ gateway conversation و parent درست را در Redis پیدا
+می‌کند و فقط turn جدید را به ChatGPT می‌فرستد. فرستادن دستی `conversation_id`
+و `parent_message_id` همچنان برای کنترل صریح پشتیبانی می‌شود.
 برای تست مسیر کاملاً UI-based از دستور زیر استفاده کنید:
 
 ```bash
@@ -49,6 +52,10 @@ CHATGPT_MODEL=chatgpt-web python examples/chatgpt_openai.py
 CHATGPT_QUESTION_COUNT=3 CHATGPT_DELAY_SECONDS=1 \
 python examples/chatgpt_200_questions.py
 ```
+
+`chatgpt_automatic_conversation.py` سه حالت API مستقیم را بدون ارسال
+`conversation_id` یا `parent_message_id` نشان می‌دهد: دو branch مستقل با system
+مشترک و یک continuation که فقط از full آرایهٔ `messages` استفاده می‌کند.
 
 `chatgpt_image.py` تصویر تولیدشده توسط خود صفحهٔ ChatGPT را از API
 `/v1/images/generations` دریافت می‌کند. نام پیش‌فرض فایل براساس MIME واقعی

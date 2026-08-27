@@ -13,12 +13,14 @@ import (
 )
 
 type Server struct {
-	service   *Service
-	pool      *Pool
-	dashboard *Dashboard
-	chat      chatCompleter
-	direct    directChatCompleter
-	directErr error
+	service         *Service
+	pool            *Pool
+	dashboard       *Dashboard
+	chat            chatCompleter
+	direct          directChatCompleter
+	directErr       error
+	conversations   chatConversationRouter
+	conversationErr error
 }
 
 type chatCompleter interface {
@@ -40,13 +42,16 @@ func NewServer(service *Service, pool *Pool, dashboard *Dashboard) *Server {
 		proxyURL = os.Getenv("LAB_PROXY_URL")
 	}
 	direct, directErr := chatgptdirect.NewClient(factoryOrigin, proxyURL)
+	conversations, conversationErr := newChatConversationPool(os.Getenv("REDIS_URL"))
 	return &Server{
-		service:   service,
-		pool:      pool,
-		dashboard: dashboard,
-		chat:      chatgptweb.NewClient(factoryOrigin),
-		direct:    direct,
-		directErr: directErr,
+		service:         service,
+		pool:            pool,
+		dashboard:       dashboard,
+		chat:            chatgptweb.NewClient(factoryOrigin),
+		direct:          direct,
+		directErr:       directErr,
+		conversations:   conversations,
+		conversationErr: conversationErr,
 	}
 }
 func (s *Server) Handler() http.Handler {

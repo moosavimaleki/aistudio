@@ -3,6 +3,7 @@ package gencontent
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -21,6 +22,23 @@ type chatStub struct {
 type directChatStub struct {
 	input chatgptdirect.Input
 	err   error
+}
+
+type conversationRouteStub struct {
+	model, browserID string
+	messages         []chatgptdirect.Message
+	route            chatConversationRoute
+	err              error
+}
+
+func (s *conversationRouteStub) Route(
+	_ context.Context,
+	model, browserID string,
+	messages []chatgptdirect.Message,
+	_ directChatCompleter,
+) (chatConversationRoute, error) {
+	s.model, s.browserID, s.messages = model, browserID, messages
+	return s.route, s.err
 }
 
 func (s *directChatStub) Generate(_ context.Context, input chatgptdirect.Input) (chatgptdirect.Result, error) {
@@ -188,5 +206,45 @@ func TestOpenAIDirectChatContinuesConversation(t *testing.T) {
 	if !strings.Contains(response.Body.String(), `"parent_message_id":"message-2"`) ||
 		!strings.Contains(response.Body.String(), `"transport":"go-direct"`) {
 		t.Fatalf("missing continuation metadata: %s", response.Body.String())
+	}
+}
+
+func TestOpenAIDirectChatRoutesRequestsWithoutConversationIDs(t *testing.T) {
+	direct := &directChatStub{}
+	router := &conversationRouteStub{route: chatConversationRoute{
+		Input: chatgptdirect.Input{
+			Model: "chatgpt/gpt-5.6-pro", BrowserID: "chatgpt2",
+			ConversationID: "conversation-root", ParentMessageID: "message-root",
+			IncludeHistory: true,
+		},
+		finish: func(context.Context, chatgptdirect.Result) error { return nil },
+		abort:  func(context.Context) error { return nil },
+	}}
+	server := &Server{chat: &chatStub{}, direct: direct, conversations: router}
+	body := `{"model":"chatgpt/gpt-5.6-pro","messages":[{"role":"system","content":"brief"},{"role":"user","content":"hello"}]}`
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body)))
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	if router.model != "chatgpt/gpt-5.6-pro" || len(router.messages) != 2 {
+		t.Fatalf("router did not receive the complete OpenAI history: %#v", router)
+	}
+	if direct.input.ConversationID != "conversation-root" || direct.input.ParentMessageID != "message-root" || !direct.input.IncludeHistory {
+		t.Fatalf("direct input did not use the automatic route: %#v", direct.input)
+	}
+}
+
+func TestOpenAIDirectChatReturns503WhenConversationPoolIsBusy(t *testing.T) {
+	server := &Server{
+		chat:          &chatStub{},
+		direct:        &directChatStub{},
+		conversations: &conversationRouteStub{err: fmt.Errorf("ChatGPT conversation pool is busy after waiting 5s")},
+	}
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"chatgpt/gpt-5.6","messages":[{"role":"user","content":"hello"}]}`)))
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
 }

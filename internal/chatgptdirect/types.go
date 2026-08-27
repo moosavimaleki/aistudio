@@ -13,6 +13,7 @@ type Input struct {
 	BrowserID       string
 	ConversationID  string
 	ParentMessageID string
+	IncludeHistory  bool
 }
 
 type Result struct {

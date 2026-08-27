@@ -95,15 +95,33 @@ func (s *Server) completeChat(
 	if err != nil {
 		return chatgptweb.Result{}, "", "", err
 	}
-	result, err := s.direct.Generate(ctx, chatgptdirect.Input{
+	input := chatgptdirect.Input{
 		Model:           body.Model,
 		Messages:        messages,
 		BrowserID:       body.BrowserID,
 		ConversationID:  body.ConversationID,
 		ParentMessageID: body.ParentMessageID,
-	})
+	}
+	var route chatConversationRoute
+	if input.ConversationID == "" && input.ParentMessageID == "" && s.conversations != nil {
+		if s.conversationErr != nil {
+			return chatgptweb.Result{}, "", "", s.conversationErr
+		}
+		route, err = s.conversations.Route(ctx, body.Model, body.BrowserID, messages, s.direct)
+		if err != nil {
+			return chatgptweb.Result{}, "", "", err
+		}
+		input = route.Input
+		defer route.Abort(context.Background())
+	}
+	result, err := s.direct.Generate(ctx, input)
 	if err != nil {
 		return chatgptweb.Result{}, "", "", err
+	}
+	if route.finish != nil {
+		if err := route.Finish(context.Background(), result); err != nil {
+			return chatgptweb.Result{}, "", "", err
+		}
 	}
 	converted := chatgptweb.Result{
 		Text:           result.Text,
@@ -229,6 +247,9 @@ func chatCompletionStatus(err error) int {
 		strings.Contains(err.Error(), "parent_message_id is required") ||
 		strings.Contains(err.Error(), "unsupported message role") {
 		return http.StatusBadRequest
+	}
+	if strings.Contains(err.Error(), "ChatGPT conversation pool is busy") {
+		return http.StatusServiceUnavailable
 	}
 	return chatBridgeStatus(err)
 }

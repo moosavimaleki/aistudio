@@ -66,7 +66,7 @@ func buildPayload(
 	parentMessageID string,
 	context BrowserContext,
 ) (conversationPayload, string, error) {
-	messages, prompt, err := buildMessages(input.Messages, input.ParentMessageID != "")
+	messages, prompt, err := buildMessages(input.Messages, input.ParentMessageID != "" && !input.IncludeHistory)
 	if err != nil {
 		return conversationPayload{}, "", err
 	}

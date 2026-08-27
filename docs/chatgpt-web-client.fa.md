@@ -86,11 +86,25 @@ TLS و HTTP/2 کلاینت Go با نزدیک‌ترین profile رسمی به C
 نام‌های عمومی API از slug خصوصی upstream جدا هستند تا تغییر نام داخلی سایت
 به قرارداد client نشت نکند.
 
-## ادامهٔ conversation
+## conversation خودکار
 
-Go state چت را نگه نمی‌دارد. در turn اول `conversation_id` خالی است؛ backend
-شناسهٔ واقعی conversation و شناسهٔ پیام assistant را برمی‌گرداند. client باید
-آن‌ها را برای turn بعدی ارسال کند:
+برای مدل‌های مستقیم، client فقط آرایهٔ استاندارد `messages` را می‌فرستد. Go در
+Redis یک pool کوچک از conversationهای ریشه برای هر `model + browser profile`
+نگه می‌دارد. درخواست مستقل از root یک branch می‌سازد؛ اگر prefix تاریخچهٔ
+request قبلاً دیده شده باشد، Go همان `conversation_id` و `parent_message_id` را
+پیدا می‌کند و فقط آخرین user turn را upstream می‌فرستد.
+
+دو request همزمان conversation مشترک نمی‌گیرند: اگر root انتخاب‌شده lease شده
+باشد، یک root آزاد یا یک conversation جدید از pool استفاده می‌شود. پیش‌فرض pool
+سه conversation است و با این متغیرها قابل تنظیم است:
+
+```dotenv
+CHATGPT_CONVERSATION_POOL_MAX=3
+CHATGPT_CONVERSATION_POOL_WAIT_SECONDS=5
+CHATGPT_CONVERSATION_LEASE_SECONDS=1800
+```
+
+ارسال صریح شناسه‌ها همچنان برای کنترل دستی پشتیبانی می‌شود:
 
 ```json
 {
