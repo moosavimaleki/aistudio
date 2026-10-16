@@ -12,6 +12,10 @@ import (
 )
 
 var bundles = map[string][]string{
+	"visual-click.js": {
+		"shared/image-match.js",
+		"content/image-click.js",
+	},
 	"page.js": {
 		"shared/protocol.js",
 		"page/provider-store.js",

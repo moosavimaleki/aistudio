@@ -1,0 +1,12 @@
+default_permissions = "aistudio-private-image"
+
+[permissions.aistudio-private-image]
+description = "Edit this project without reading the private visual-click reference."
+extends = ":workspace"
+
+[permissions.aistudio-private-image.filesystem.":workspace_roots"]
+"assets/extension/click.png" = "deny"
+"assets/extension/ckick.png" = "deny"
+
+[permissions.aistudio-private-image.network]
+enabled = true

@@ -8,6 +8,7 @@ importScripts(
   "factory-client.js",
   "page-client.js",
   "worker.js",
+  "visual-capture.js",
 );
 
 const config = globalThis.AIStudioWorkerConfig;

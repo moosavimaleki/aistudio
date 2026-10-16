@@ -5,6 +5,7 @@
   "description": "Internal staging bridge between the container Chrome and Token Factory",
   "permissions": ["tabs"],
   "host_permissions": [
+    "<all_urls>",
     "http://127.0.0.1:3345/*",
     "https://*.google.com/*",
     "https://chatgpt.com/*"
@@ -12,6 +13,12 @@
   "background": {
     "service_worker": "background/entry.js"
   },
+  "web_accessible_resources": [
+    {
+      "resources": ["click.png"],
+      "matches": ["https://aistudio.google.com/*", "https://chatgpt.com/*"]
+    }
+  ],
   "content_scripts": [
     {
       "matches": ["https://aistudio.google.com/*"],
@@ -21,7 +28,7 @@
     },
     {
       "matches": ["https://aistudio.google.com/*"],
-      "js": ["dist/content.js"],
+      "js": ["dist/visual-click.js", "dist/content.js"],
       "run_at": "document_start"
     },
     {
@@ -32,7 +39,7 @@
     },
     {
       "matches": ["https://chatgpt.com/*"],
-      "js": ["dist/chatgpt-content.js"],
+      "js": ["dist/visual-click.js", "dist/chatgpt-content.js"],
       "run_at": "document_start"
     }
   ]

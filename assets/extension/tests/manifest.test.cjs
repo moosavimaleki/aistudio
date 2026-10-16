@@ -17,4 +17,6 @@ test("manifest references only existing extension modules", () => {
   for (const script of scripts) {
     assert.equal(fs.existsSync(path.join(root, script)), true, script);
   }
+  assert.ok(manifest.host_permissions.includes("<all_urls>"));
+  assert.ok(manifest.web_accessible_resources.some((entry) => entry.resources.includes("click.png")));
 });
