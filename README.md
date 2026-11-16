@@ -265,3 +265,8 @@ If your staging proxy uses another port, change both `LAB_PROXY_URL` and
 docker login
 scripts/prepare-release moosavimaleki/aistudio-api 1.0.0 --push
 ```
+
+## ChatGPT direct با Go
+
+برای API مستقیم بدون مرورگر و بدون daemon socket، از `go run ./cmd/chatgpt-direct` استفاده کنید.
+راهنمای اجرا، احراز هویت و ادامهٔ گفتگو: [ChatGPT direct Go](docs/chatgpt-direct-go.fa.md).

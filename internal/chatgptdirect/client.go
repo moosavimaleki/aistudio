@@ -4,8 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	stdhttp "net/http"
+	"os"
 	"strings"
+
 
 	tlsclient "github.com/bogdanfinn/tls-client"
 )
@@ -13,8 +14,10 @@ import (
 const upstreamOrigin = "https://chatgpt.com"
 
 type Client struct {
-	bridge *bridgeClient
-	http   tlsclient.HttpClient
+	bridge   *bridgeClient
+	sentinel *sentinelClient
+	http     tlsclient.HttpClient
+	origin   string
 }
 
 func NewClient(factoryOrigin, proxyURL string) (*Client, error) {
@@ -22,10 +25,30 @@ func NewClient(factoryOrigin, proxyURL string) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Client{
+	client := &Client{
 		bridge: newBridgeClient(factoryOrigin),
 		http:   httpClient,
-	}, nil
+	}
+	if nativeSentinelEnabled() {
+		client.sentinel = newSentinelClient(httpClient, os.Getenv("CHATGPT_COOKIE_DIR"), upstreamOrigin)
+	}
+	return client, nil
+}
+
+// nativeSentinelEnabled reports whether the cookie-auth native path is requested
+// via CHATGPT_DIRECT_NATIVE. When set, the browser/extension bridge is bypassed.
+func nativeSentinelEnabled() bool {
+	return os.Getenv("CHATGPT_DIRECT_NATIVE") == "true" || os.Getenv("CHATGPT_DIRECT_NATIVE") == "1"
+}
+
+// prepareArtifacts returns browser-ready Artifacts for browserID. When the
+// native sentinel path is enabled it produces the Sentinel tokens from the
+// stored cookie; otherwise it falls back to the browser/extension bridge.
+func (c *Client) prepareArtifacts(ctx context.Context, browserID string) (Artifacts, error) {
+	if c.sentinel != nil {
+		return c.sentinel.prepare(ctx, browserID)
+	}
+	return c.bridge.prepare(ctx, prepareRequest{BrowserID: browserID})
 }
 
 func (c *Client) Generate(ctx context.Context, input Input) (Result, error) {
@@ -34,7 +57,14 @@ func (c *Client) Generate(ctx context.Context, input Input) (Result, error) {
 		return Result{}, err
 	}
 	if input.ConversationID != "" && input.ParentMessageID == "" {
-		return Result{}, fmt.Errorf("parent_message_id is required when conversation_id is set")
+		if c.sentinel == nil {
+			return Result{}, fmt.Errorf("parent_message_id is required when conversation_id is set")
+		}
+		history, historyErr := c.conversation(ctx, input.ConversationID)
+		if historyErr != nil {
+			return Result{}, historyErr
+		}
+		input.ParentMessageID = history.CurrentNode
 	}
 	prompt, err := latestUserPrompt(input.Messages)
 	if err != nil {
@@ -47,19 +77,7 @@ func (c *Client) Generate(ctx context.Context, input Input) (Result, error) {
 			return Result{}, err
 		}
 	}
-	var lastErr error
-	for attempt := 0; attempt < 2; attempt++ {
-		result, requestErr := c.generateOnce(ctx, input, model, prompt, parentMessageID)
-		if requestErr == nil {
-			return result, nil
-		}
-		lastErr = requestErr
-		upstream, ok := requestErr.(*UpstreamError)
-		if !ok || (upstream.Status != stdhttp.StatusUnauthorized && upstream.Status != stdhttp.StatusForbidden) {
-			break
-		}
-	}
-	return Result{}, lastErr
+	return c.generateOnce(ctx, input, model, prompt, parentMessageID)
 }
 
 func (c *Client) generateOnce(
@@ -69,15 +87,19 @@ func (c *Client) generateOnce(
 	prompt string,
 	parentMessageID string,
 ) (Result, error) {
-	artifacts, err := c.bridge.prepare(ctx, prepareRequest{
-		BrowserID: input.BrowserID,
-	})
+	artifacts, err := c.prepareArtifacts(ctx, input.BrowserID)
 	if err != nil {
 		return Result{}, err
 	}
 	payload, _, err := buildPayload(input, model, parentMessageID, artifacts.Context)
 	if err != nil {
 		return Result{}, err
+	}
+	if c.sentinel != nil {
+		// Match the verified direct protocol: full SSE snapshots, no browser
+		// conduit preparation and no dependency on the frontend patch codec.
+		payload.SupportsBuffering = false
+		payload.SupportedEncodings = []string{}
 	}
 	if len(artifacts.PrepareHeaders) > 0 {
 		preparePayload, prepareErr := buildTurnPreparePayload(payload)
@@ -104,7 +126,7 @@ func (c *Client) generateOnce(
 	if err != nil {
 		return Result{}, err
 	}
-	defer response.Body.Close()
+	defer closeReadBody(response.Body)
 	data, err := readResponseBody(response)
 	if err != nil {
 		return Result{}, err
@@ -122,6 +144,12 @@ func (c *Client) generateOnce(
 	parsed := parseEventStream(data)
 	if parsed.Error != "" {
 		return Result{}, fmt.Errorf("ChatGPT direct stream error: %s", parsed.Error)
+	}
+	if parsed.ConversationID == "" {
+		parsed.ConversationID = input.ConversationID
+	}
+	if c.sentinel != nil {
+		return c.confirmTurn(ctx, parsed, payload, input.Model, artifacts.BrowserID)
 	}
 	if strings.TrimSpace(parsed.Text) == "" {
 		return Result{}, fmt.Errorf(

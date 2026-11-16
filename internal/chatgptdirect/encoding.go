@@ -40,14 +40,14 @@ func readResponseBody(response *fhttp.Response) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		defer compressed.Close()
+		defer closeReadBody(compressed)
 		reader = compressed
 	case "deflate":
 		compressed, err := zlib.NewReader(reader)
 		if err != nil {
 			return nil, err
 		}
-		defer compressed.Close()
+		defer closeReadBody(compressed)
 		reader = compressed
 	case "zstd":
 		compressed, err := zstd.NewReader(reader)

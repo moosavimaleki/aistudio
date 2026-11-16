@@ -45,7 +45,7 @@ func (c *Client) send(
 	if path != conversationPath {
 		return nil, "", fmt.Errorf("unexpected ChatGPT upstream path: %s", path)
 	}
-	request, err := newUpstreamRequest(ctx, path, artifacts.Headers, artifacts, body, "text/event-stream")
+	request, err := c.newUpstreamRequest(ctx, path, artifacts.Headers, artifacts, body, "text/event-stream")
 	if err != nil {
 		return nil, "", err
 	}
@@ -58,7 +58,7 @@ func (c *Client) sendPrepare(
 	artifacts Artifacts,
 	body []byte,
 ) (*fhttp.Response, error) {
-	request, err := newUpstreamRequest(
+	request, err := c.newUpstreamRequest(
 		ctx,
 		preparePath,
 		artifacts.PrepareHeaders,
@@ -72,7 +72,7 @@ func (c *Client) sendPrepare(
 	return c.http.Do(request)
 }
 
-func newUpstreamRequest(
+func (c *Client) newUpstreamRequest(
 	ctx context.Context,
 	path string,
 	headers map[string]string,
@@ -83,7 +83,7 @@ func newUpstreamRequest(
 	request, err := fhttp.NewRequestWithContext(
 		ctx,
 		fhttp.MethodPost,
-		upstreamOrigin+path,
+		c.baseURL()+path,
 		bytes.NewReader(body),
 	)
 	if err != nil {
@@ -95,8 +95,17 @@ func newUpstreamRequest(
 		}
 	}
 	setBrowserHeaders(request, artifacts, accept)
+	request.Header.Set("X-OpenAI-Target-Path", path)
+	request.Header.Set("X-OpenAI-Target-Route", path)
 	setHeaderOrder(request, path)
 	return request, nil
+}
+
+func (c *Client) baseURL() string {
+	if c.origin != "" {
+		return c.origin
+	}
+	return upstreamOrigin
 }
 
 func setBrowserHeaders(request *fhttp.Request, artifacts Artifacts, accept string) {

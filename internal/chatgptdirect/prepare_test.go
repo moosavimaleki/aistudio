@@ -80,7 +80,7 @@ func TestPrepareRequestUsesCapturedBrowserHeaders(t *testing.T) {
 		Cookies:   "session=test",
 		UserAgent: "Chrome/Test",
 	}
-	request, err := newUpstreamRequest(
+	request, err := (&Client{}).newUpstreamRequest(
 		context.Background(),
 		preparePath,
 		artifacts.PrepareHeaders,

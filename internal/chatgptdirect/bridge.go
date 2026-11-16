@@ -40,7 +40,7 @@ func (b *bridgeClient) prepare(ctx context.Context, input prepareRequest) (Artif
 	if err != nil {
 		return Artifacts{}, err
 	}
-	defer response.Body.Close()
+	defer closeReadBody(response.Body)
 	if response.StatusCode != http.StatusOK {
 		var failure struct {
 			Error string `json:"error"`

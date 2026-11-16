@@ -55,6 +55,7 @@ func consumeValue(value any, state *patchState, result *streamResult) {
 	if !ok {
 		return
 	}
+	consumeRoot(object, result)
 	if conversationID, ok := object["conversation_id"].(string); ok {
 		result.ConversationID = conversationID
 	}

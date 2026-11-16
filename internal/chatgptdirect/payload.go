@@ -166,7 +166,10 @@ func historyContext(messages []Message) string {
 		if text == "" {
 			continue
 		}
-		role := strings.Title(message.Role)
+		role := message.Role
+		if len(role) > 0 {
+			role = strings.ToUpper(role[:1]) + role[1:]
+		}
 		if message.Role == "developer" {
 			role = "System"
 		}
