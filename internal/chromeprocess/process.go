@@ -44,6 +44,14 @@ func (p *Process) Start() error {
 		return err
 	}
 	args := []string{"--no-sandbox", "--disable-gpu", "--no-first-run", "--no-default-browser-check", "--disable-search-engine-choice-screen", "--remote-debugging-address=127.0.0.1", fmt.Sprintf("--remote-debugging-port=%d", p.Port), "--user-data-dir=" + profile, "--disable-extensions-except=" + extension, "--load-extension=" + extension, "about:blank"}
+	headless := os.Getenv("CHROME_HEADLESS")
+	switch os.Getenv("CHATGPT_MODE") {
+	case "headless":
+		headless = "true"
+	case "browser":
+		headless = "false"
+	}
+	args = append(args, displayFlags(headless)...)
 	if proxy := os.Getenv("LAB_PROXY_URL"); proxy != "" {
 		args = append(args, "--proxy-server="+proxy, "--proxy-bypass-list=127.0.0.1;localhost;<-loopback>")
 	}

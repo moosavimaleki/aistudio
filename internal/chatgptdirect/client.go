@@ -7,20 +7,29 @@ import (
 	"os"
 	"strings"
 
-
 	tlsclient "github.com/bogdanfinn/tls-client"
 )
 
 const upstreamOrigin = "https://chatgpt.com"
 
 type Client struct {
-	bridge   *bridgeClient
-	sentinel *sentinelClient
-	http     tlsclient.HttpClient
-	origin   string
+	bridge     *bridgeClient
+	sentinel   *sentinelClient
+	http       tlsclient.HttpClient
+	origin     string
+	nativeGate chan struct{}
+	parents    map[string]string // accessed only while nativeGate is held
 }
 
 func NewClient(factoryOrigin, proxyURL string) (*Client, error) {
+	if nativeSentinelEnabled() {
+		return NewNativeClient(NativeConfig{
+			SessionFile: os.Getenv("CHATGPT_SESSION_FILE"),
+			CookieDir:   nativeCookieDirectory(), ProxyURL: proxyURL,
+			SentinelScript: os.Getenv("SENTINEL_SIDECAR_PATH"),
+			BaseURL:        os.Getenv("CHATGPT_UPSTREAM_ORIGIN"),
+		})
+	}
 	httpClient, err := newBrowserHTTP(proxyURL)
 	if err != nil {
 		return nil, err
@@ -29,16 +38,24 @@ func NewClient(factoryOrigin, proxyURL string) (*Client, error) {
 		bridge: newBridgeClient(factoryOrigin),
 		http:   httpClient,
 	}
-	if nativeSentinelEnabled() {
-		client.sentinel = newSentinelClient(httpClient, os.Getenv("CHATGPT_COOKIE_DIR"), upstreamOrigin)
-	}
 	return client, nil
 }
 
 // nativeSentinelEnabled reports whether the cookie-auth native path is requested
 // via CHATGPT_DIRECT_NATIVE. When set, the browser/extension bridge is bypassed.
 func nativeSentinelEnabled() bool {
+	mode := os.Getenv("CHATGPT_MODE")
+	if mode != "" {
+		return mode == "direct"
+	}
 	return os.Getenv("CHATGPT_DIRECT_NATIVE") == "true" || os.Getenv("CHATGPT_DIRECT_NATIVE") == "1"
+}
+
+func nativeCookieDirectory() string {
+	if os.Getenv("CHATGPT_SESSION_FILE") != "" {
+		return ""
+	}
+	return os.Getenv("CHATGPT_COOKIE_DIR")
 }
 
 // prepareArtifacts returns browser-ready Artifacts for browserID. When the
@@ -52,6 +69,14 @@ func (c *Client) prepareArtifacts(ctx context.Context, browserID string) (Artifa
 }
 
 func (c *Client) Generate(ctx context.Context, input Input) (Result, error) {
+	if c.nativeGate != nil {
+		select {
+		case c.nativeGate <- struct{}{}:
+			defer func() { <-c.nativeGate }()
+		case <-ctx.Done():
+			return Result{}, ctx.Err()
+		}
+	}
 	model, err := ResolveModel(input.Model)
 	if err != nil {
 		return Result{}, err
@@ -60,11 +85,14 @@ func (c *Client) Generate(ctx context.Context, input Input) (Result, error) {
 		if c.sentinel == nil {
 			return Result{}, fmt.Errorf("parent_message_id is required when conversation_id is set")
 		}
-		history, historyErr := c.conversation(ctx, input.ConversationID)
-		if historyErr != nil {
-			return Result{}, historyErr
+		input.ParentMessageID = c.parents[input.BrowserID+"\x00"+input.ConversationID]
+		if input.ParentMessageID == "" {
+			history, historyErr := c.conversation(ctx, input.ConversationID, input.BrowserID)
+			if historyErr != nil {
+				return Result{}, historyErr
+			}
+			input.ParentMessageID = history.CurrentNode
 		}
-		input.ParentMessageID = history.CurrentNode
 	}
 	prompt, err := latestUserPrompt(input.Messages)
 	if err != nil {

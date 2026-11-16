@@ -147,12 +147,16 @@ func LoadSettings(envFile string) (Settings, error) {
 	cookieDir, _ = filepath.Abs(cookieDir)
 	values["AISTUDIO_COOKIE_DIR"] = cookieDir
 	cookieFiles, err := DiscoverCookieFiles(cookieDir)
-	if err != nil {
+	directOnly := os.Getenv("CHATGPT_MODE") == "direct"
+	if err != nil && !directOnly {
 		return Settings{}, err
 	}
-	cookieText, err := os.ReadFile(cookieFiles[0])
-	if err != nil {
-		return Settings{}, err
+	var cookieText []byte
+	if !directOnly {
+		cookieText, err = os.ReadFile(cookieFiles[0])
+		if err != nil {
+			return Settings{}, err
+		}
 	}
 	upstream, err := LoadUpstream()
 	if err != nil {
@@ -163,9 +167,12 @@ func LoadSettings(envFile string) (Settings, error) {
 	if err != nil {
 		return Settings{}, err
 	}
-	cookieHeader, err := ParseNetscapeCookieHeader(string(cookieText), parsed.Hostname())
-	if err != nil {
-		return Settings{}, err
+	cookieHeader := ""
+	if !directOnly {
+		cookieHeader, err = ParseNetscapeCookieHeader(string(cookieText), parsed.Hostname())
+		if err != nil {
+			return Settings{}, err
+		}
 	}
 	return Settings{EnvFile: envFile, Values: values, CookieHeader: cookieHeader, OriginURL: origin, Model: values["AISTUDIO_MODEL"], TokenFactoryURL: values["TOKEN_FACTORY_URL"], WAAAPIKey: mustValue(upstream.Opaque, "waa_api_key"), ProxyURL: valueOr(values["AISTUDIO_PROXY_URL"], "http://127.0.0.1:10808"), AuthUser: valueOr(values["AISTUDIO_AUTH_USER"], "0"), BrowserID: values["AISTUDIO_BROWSER_ID"]}, nil
 }

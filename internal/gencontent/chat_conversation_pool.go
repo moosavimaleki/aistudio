@@ -270,6 +270,12 @@ func (p *chatConversationPool) release(ctx context.Context, key, id, token strin
 }
 
 func (p *chatConversationPool) poolKey(model, browserID string) string {
+	if mode, err := chatMode(); err == nil && mode == "direct" {
+		// A native session must not inherit roots created by a browser account
+		// or by a different credential source in an earlier deployment.
+		source := os.Getenv("CHATGPT_SESSION_FILE") + "\x00" + os.Getenv("CHATGPT_COOKIE_DIR")
+		return hashKey("direct\x00" + source + "\x00" + model + "\x00" + browserID)
+	}
 	return hashKey(model + "\x00" + browserID)
 }
 

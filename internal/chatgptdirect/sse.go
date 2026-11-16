@@ -10,6 +10,8 @@ type streamResult struct {
 	ConversationID string
 	MessageID      string
 	Error          string
+	Done           bool
+	Final          bool
 }
 
 type patchState struct {
@@ -35,7 +37,11 @@ func consumeEvent(block string, state *patchState, result *streamResult) {
 		}
 	}
 	data := strings.Join(values, "\n")
-	if data == "" || data == "[DONE]" {
+	if data == "[DONE]" {
+		result.Done = true
+		return
+	}
+	if data == "" {
 		return
 	}
 	var value any
@@ -121,12 +127,22 @@ func consumeRoot(root map[string]any, result *streamResult) {
 	if !ok {
 		return
 	}
-	if messageID, ok := message["id"].(string); ok {
-		result.MessageID = messageID
-	}
 	author, _ := message["author"].(map[string]any)
 	if author["role"] != "assistant" {
 		return
+	}
+	channel, _ := message["channel"].(string)
+	if channel != "" && channel != "final" {
+		return
+	}
+	if messageID, ok := message["id"].(string); ok {
+		if result.MessageID != messageID {
+			result.Final = false
+		}
+		result.MessageID = messageID
+	}
+	if status, ok := message["status"].(string); ok {
+		result.Final = status == "finished_successfully"
 	}
 	content, _ := message["content"].(map[string]any)
 	parts, _ := content["parts"].([]any)

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -47,8 +48,15 @@ func cookieIndexFor(browserID string, n int) int {
 		return 0
 	}
 	lower := strings.ToLower(browserID)
-	if strings.Contains(lower, "2") || strings.Contains(lower, "second") {
+	if strings.Contains(lower, "second") {
 		return 1
+	}
+	start := len(lower)
+	for start > 0 && lower[start-1] >= '0' && lower[start-1] <= '9' {
+		start--
+	}
+	if slot, err := strconv.Atoi(lower[start:]); err == nil && slot >= 1 && slot <= n {
+		return slot - 1
 	}
 	return 0
 }

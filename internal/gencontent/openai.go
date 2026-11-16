@@ -74,13 +74,16 @@ func (s *Server) completeChat(
 	ctx context.Context,
 	body chatCompletionRequest,
 ) (chatgptweb.Result, string, string, error) {
-	if body.Model == "chatgpt-web" {
+	if body.Model == "chatgpt-web" && s.chatMode != "direct" {
 		prompt, err := renderChatPrompt(body.Messages)
 		if err != nil {
 			return chatgptweb.Result{}, "", "", err
 		}
 		result, err := s.chat.Generate(ctx, prompt, body.BrowserID)
 		return result, "", "browser-ui", err
+	}
+	if body.Model == "chatgpt-web" && s.chatMode == "direct" {
+		body.Model = "chatgpt/gpt-5.6-thinking-extended"
 	}
 	if _, err := chatgptdirect.ResolveModel(body.Model); err != nil {
 		return chatgptweb.Result{}, "", "", err

@@ -63,7 +63,7 @@ func TestOpenAIDirectChatPreservesBridgeStatus(t *testing.T) {
 		Message: "browser is not ready",
 	}}
 	server := &Server{chat: &chatStub{}, direct: direct}
-	body := `{"model":"chatgpt/gpt-5.6-pro","messages":[{"role":"user","content":"hello"}]}`
+	body := `{"model":"chatgpt/gpt-5.6-thinking-extended","messages":[{"role":"user","content":"hello"}]}`
 	response := httptest.NewRecorder()
 	server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body)))
 
@@ -185,7 +185,7 @@ func TestOpenAIDirectChatContinuesConversation(t *testing.T) {
 	direct := &directChatStub{}
 	server := &Server{chat: &chatStub{}, direct: direct}
 	body := `{
-		"model":"chatgpt/gpt-5.6-pro",
+		"model":"chatgpt/gpt-5.6-thinking-extended",
 		"browser_id":"chatgpt",
 		"conversation_id":"conversation-1",
 		"parent_message_id":"message-1",
@@ -213,7 +213,7 @@ func TestOpenAIDirectChatRoutesRequestsWithoutConversationIDs(t *testing.T) {
 	direct := &directChatStub{}
 	router := &conversationRouteStub{route: chatConversationRoute{
 		Input: chatgptdirect.Input{
-			Model: "chatgpt/gpt-5.6-pro", BrowserID: "chatgpt2",
+			Model: "chatgpt/gpt-5.6-thinking-extended", BrowserID: "chatgpt2",
 			ConversationID: "conversation-root", ParentMessageID: "message-root",
 			IncludeHistory: true,
 		},
@@ -221,14 +221,14 @@ func TestOpenAIDirectChatRoutesRequestsWithoutConversationIDs(t *testing.T) {
 		abort:  func(context.Context) error { return nil },
 	}}
 	server := &Server{chat: &chatStub{}, direct: direct, conversations: router}
-	body := `{"model":"chatgpt/gpt-5.6-pro","messages":[{"role":"system","content":"brief"},{"role":"user","content":"hello"}]}`
+	body := `{"model":"chatgpt/gpt-5.6-thinking-extended","messages":[{"role":"system","content":"brief"},{"role":"user","content":"hello"}]}`
 	response := httptest.NewRecorder()
 	server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body)))
 
 	if response.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
-	if router.model != "chatgpt/gpt-5.6-pro" || len(router.messages) != 2 {
+	if router.model != "chatgpt/gpt-5.6-thinking-extended" || len(router.messages) != 2 {
 		t.Fatalf("router did not receive the complete OpenAI history: %#v", router)
 	}
 	if direct.input.ConversationID != "conversation-root" || direct.input.ParentMessageID != "message-root" || !direct.input.IncludeHistory {
@@ -243,7 +243,7 @@ func TestOpenAIDirectChatReturns503WhenConversationPoolIsBusy(t *testing.T) {
 		conversations: &conversationRouteStub{err: fmt.Errorf("ChatGPT conversation pool is busy after waiting 5s")},
 	}
 	response := httptest.NewRecorder()
-	server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"chatgpt/gpt-5.6","messages":[{"role":"user","content":"hello"}]}`)))
+	server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"chatgpt/gpt-5.6-thinking-off","messages":[{"role":"user","content":"hello"}]}`)))
 	if response.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}

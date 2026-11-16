@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"time"
 )
@@ -81,6 +82,12 @@ func (r *sentinelNodeRunner) run(ctx context.Context, args []string, input any) 
 		defer cancel()
 	}
 	cmd := exec.CommandContext(cmdCtx, r.nodePath, append([]string{r.scriptPath}, args...)...)
+	cmd.Env = os.Environ()
+	// The Node 24 runtime used in Docker honors the same HTTP proxy as Go
+	// when fetching the SDK. Prepared evidence still travels only over stdin.
+	if proxy := os.Getenv("AISTUDIO_PROXY_URL"); proxy != "" {
+		cmd.Env = append(cmd.Env, "NODE_USE_ENV_PROXY=1", "HTTPS_PROXY="+proxy, "HTTP_PROXY="+proxy)
+	}
 	if input != nil {
 		payload, err := json.Marshal(input)
 		if err != nil {

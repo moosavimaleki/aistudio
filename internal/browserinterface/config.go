@@ -40,9 +40,16 @@ func LoadConfig() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	// Native HTTP chat owns these cookies and does not create Chrome profiles.
+	if os.Getenv("CHATGPT_MODE") == "direct" {
+		chatGPTFiles = nil
+	}
 	enabledChatGPT, err := parseBrowserIDSet(os.Getenv("CHATGPT_ENABLED_BROWSER_IDS"))
 	if err != nil {
 		return Config{}, err
+	}
+	if os.Getenv("CHATGPT_MODE") == "direct" {
+		enabledChatGPT = map[string]bool{}
 	}
 	filterChatGPT := len(enabledChatGPT) > 0
 	if value := os.Getenv("CHROME_CDP_BASE_PORT"); value != "" {

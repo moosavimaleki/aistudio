@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-curl -fsS http://127.0.0.1:3345/health >/dev/null
+if [[ "${CHATGPT_MODE:-}" != direct ]]; then
+  curl -fsS http://127.0.0.1:3345/health >/dev/null
+fi
 curl -fsS http://127.0.0.1:8000/health >/dev/null

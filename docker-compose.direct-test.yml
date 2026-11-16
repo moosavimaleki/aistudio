@@ -1,0 +1,50 @@
+# Isolated direct-mode tests; does not modify the main Compose services/ports.
+services:
+  direct-test:
+    image: aistudio-api:direct-test
+    build:
+      context: .
+      dockerfile: Dockerfile
+      network: host
+      args:
+        CHROME_BASE_IMAGE: "${DIRECT_TEST_BASE_IMAGE:-aistudio-api:before-direct-20261116}"
+        HTTP_PROXY: "${DIRECT_TEST_BUILD_PROXY:-http://127.0.0.1:10808}"
+        HTTPS_PROXY: "${DIRECT_TEST_BUILD_PROXY:-http://127.0.0.1:10808}"
+        NO_PROXY: localhost,127.0.0.1
+    container_name: aistudio-direct-test
+    entrypoint: ["/app/bin/gencontent"]
+    ports:
+      - "127.0.0.1:3350:8000"
+    environment:
+      GENCONTENT_PORT: "8000"
+      CHATGPT_MODE: direct
+      CHATGPT_SESSION_FILE: /app/chatgpt-session/session.json
+      SENTINEL_SIDECAR_PATH: /app/sentinel/sentinel-node-probe.js
+      REDIS_URL: redis://test-redis:6379/0
+      METRICS_NAMESPACE: direct-test
+      AISTUDIO_PROXY_URL: "${DIRECT_TEST_PROXY:-http://host.docker.internal:10809}"
+      FACTORY_ORIGIN: http://127.0.0.1:1
+      TOKEN_FACTORY_URL: http://127.0.0.1:1/get-token
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    group_add:
+      - "${COOKIE_WRITER_GID:-1000}"
+    volumes:
+      - ./.local/chatgpt-session:/app/chatgpt-session:ro
+    depends_on:
+      test-redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  test-redis:
+    image: redis:7-alpine
+    container_name: aistudio-direct-test-redis
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 10

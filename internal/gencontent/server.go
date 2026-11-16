@@ -21,6 +21,7 @@ type Server struct {
 	directErr       error
 	conversations   chatConversationRouter
 	conversationErr error
+	chatMode        string
 }
 
 type chatCompleter interface {
@@ -42,6 +43,10 @@ func NewServer(service *Service, pool *Pool, dashboard *Dashboard) *Server {
 		proxyURL = os.Getenv("LAB_PROXY_URL")
 	}
 	direct, directErr := chatgptdirect.NewClient(factoryOrigin, proxyURL)
+	mode, modeErr := chatMode()
+	if modeErr != nil {
+		directErr = modeErr
+	}
 	conversations, conversationErr := newChatConversationPool(os.Getenv("REDIS_URL"))
 	return &Server{
 		service:         service,
@@ -52,6 +57,7 @@ func NewServer(service *Service, pool *Pool, dashboard *Dashboard) *Server {
 		directErr:       directErr,
 		conversations:   conversations,
 		conversationErr: conversationErr,
+		chatMode:        mode,
 	}
 }
 func (s *Server) Handler() http.Handler {
@@ -67,6 +73,14 @@ func (s *Server) Handler() http.Handler {
 	return mux
 }
 func (s *Server) health(writer http.ResponseWriter, request *http.Request) {
+	if s.chatMode == "direct" {
+		if s.directErr != nil || s.direct == nil {
+			writeJSON(writer, http.StatusServiceUnavailable, map[string]any{"ok": false, "chatgpt_mode": "direct", "error": "direct client is unavailable"})
+			return
+		}
+		writeJSON(writer, http.StatusOK, map[string]any{"ok": true, "chatgpt_mode": "direct"})
+		return
+	}
 	result, err := s.service.Health(request.Context())
 	if err != nil {
 		result["ok"] = false

@@ -4,3 +4,10 @@ __pycache__
 *.py[cod]
 .git
 test
+
+.env
+COOKIES
+CHATGPT_COOKIES
+.local
+docs/reports
+docs/research

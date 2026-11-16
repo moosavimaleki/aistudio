@@ -20,12 +20,14 @@ services:
       - ./config/container.env
       - ./.env
     environment:
+      CHATGPT_MODE: "${CHATGPT_MODE:-browser}"
       CHATGPT_ENABLED_BROWSER_IDS: "${CHATGPT_ENABLED_BROWSER_IDS:-}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./COOKIES:/app/cookies
       - ./CHATGPT_COOKIES:/app/chatgpt-cookies
+      - ./.local/chatgpt-session:/app/chatgpt-session:ro
       - browser_profiles:/app/browser-profiles
     group_add:
       - "${COOKIE_WRITER_GID:-1000}"

@@ -55,5 +55,5 @@ func NewNativeClient(config NativeConfig) (*Client, error) {
 	if _, err := os.Stat(script); err != nil {
 		return nil, fmt.Errorf("sentinel SDK runner not found: %w", err)
 	}
-	return &Client{http: httpClient, sentinel: sentinel, origin: origin}, nil
+	return &Client{http: httpClient, sentinel: sentinel, origin: origin, nativeGate: make(chan struct{}, 1), parents: map[string]string{}}, nil
 }
