@@ -18,7 +18,7 @@ func TestBuildTurnPreparePayload(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			model, err := ResolveModel("chatgpt/gpt-5.6-pro")
+			model, err := ResolveModel("chatgpt/gpt-5.6-thinking-extended")
 			if err != nil {
 				t.Fatal(err)
 			}

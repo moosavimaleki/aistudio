@@ -2,8 +2,24 @@ package chatgptdirect
 
 import "testing"
 
+func TestThinkingModelNamesSetEffort(t *testing.T) {
+	for name, want := range map[string]string{
+		"chatgpt/gpt-5.6-thinking-off":      "",
+		"chatgpt/gpt-5.6-thinking-standard": "standard",
+		"chatgpt/gpt-5.6-thinking-extended": "extended",
+		"iran/ggt-5.6-thinking-off":         "",
+		"iran/ggt-5.6-thinking-standard":    "standard",
+		"iran/ggt-5.6-thinking-extended":    "extended",
+	} {
+		model, err := ResolveModel(name)
+		if err != nil || model.ThinkingEffort != want {
+			t.Fatalf("%s = %#v, %v", name, model, err)
+		}
+	}
+}
+
 func TestBuildPayloadContinuesConversation(t *testing.T) {
-	model, err := ResolveModel("chatgpt/gpt-5.6-pro")
+	model, err := ResolveModel("chatgpt/gpt-5.6-thinking-extended")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,7 +46,7 @@ func TestBuildPayloadContinuesConversation(t *testing.T) {
 }
 
 func TestBuildPayloadAddsHistoryForNewBranch(t *testing.T) {
-	model, err := ResolveModel("chatgpt/gpt-5.6-pro")
+	model, err := ResolveModel("chatgpt/gpt-5.6-thinking-extended")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -9,9 +9,15 @@ type Model struct {
 }
 
 var supportedModels = []Model{
-	{Name: "chatgpt/gpt-5.6", Slug: "gpt-5-6"},
-	{Name: "chatgpt/gpt-5.6-thinking", Slug: "gpt-5-6-thinking", ThinkingEffort: "extended"},
-	{Name: "chatgpt/gpt-5.6-pro", Slug: "gpt-5-6-thinking", ThinkingEffort: "extended"},
+	{Name: "chatgpt/gpt-6", Slug: "gpt-6"},
+	{Name: "chatgpt/gpt-6-thinking-standard", Slug: "gpt-6-thinking", ThinkingEffort: "standard"},
+	{Name: "chatgpt/gpt-6-thinking-extended", Slug: "gpt-6-thinking", ThinkingEffort: "extended"},
+	{Name: "chatgpt/gpt-5.6-thinking-off", Slug: "gpt-5-6-thinking"},
+	{Name: "chatgpt/gpt-5.6-thinking-standard", Slug: "gpt-5-6-thinking", ThinkingEffort: "standard"},
+	{Name: "chatgpt/gpt-5.6-thinking-extended", Slug: "gpt-5-6-thinking", ThinkingEffort: "extended"},
+	{Name: "iran/ggt-5.6-thinking-off", Slug: "gpt-5-6-thinking"},
+	{Name: "iran/ggt-5.6-thinking-standard", Slug: "gpt-5-6-thinking", ThinkingEffort: "standard"},
+	{Name: "iran/ggt-5.6-thinking-extended", Slug: "gpt-5-6-thinking", ThinkingEffort: "extended"},
 }
 
 func ResolveModel(name string) (Model, error) {
