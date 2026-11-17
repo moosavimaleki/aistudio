@@ -77,14 +77,78 @@ TLS و HTTP/2 کلاینت Go با نزدیک‌ترین profile رسمی به C
 
 ## مدل‌ها
 
-- `chatgpt/gpt-5.6`: مدل پایهٔ مستقیم
-- `chatgpt/gpt-5.6-thinking`: حالت thinking با effort توسعه‌یافته
-- `chatgpt/gpt-5.6-pro`: alias عمومی Pro روی قرارداد زندهٔ
-  `gpt-5-6-thinking` با `thinking_effort=extended`
+- `chatgpt/gpt-5.6-thinking-off`: همان مدل upstream `gpt-5-6-thinking` بدون field فکر
+- `chatgpt/gpt-5.6-thinking-standard`: با `thinking_effort=standard`
+- `chatgpt/gpt-5.6-thinking-extended`: با `thinking_effort=extended`
+- aliasهای آزمایشگاهی معادل با پیشوند `iran/ggt-5.6-*` نیز در `/v1/models` عرضه
+  می‌شوند و فقط نام عمومی متفاوت دارند؛ upstream آن‌ها همان `gpt-5-6-thinking` است.
 - `chatgpt-web`: مسیر کاملاً UI-based
 
 نام‌های عمومی API از slug خصوصی upstream جدا هستند تا تغییر نام داخلی سایت
 به قرارداد client نشت نکند.
+
+نام مدل سطح فکر را تعیین می‌کند؛ API عمومی فیلد `thinking_effort` ندارد.
+
+## شمارش توکن
+
+پاسخ OpenAI-compatible شامل `usage.prompt_tokens`، `usage.completion_tokens` و
+`usage.total_tokens` است. چون backend وب ChatGPT usage رسمی برنمی‌گرداند، این
+اعداد با tokenizer محلی `o200k_base` محاسبه می‌شوند و
+`lab_metadata.usage_estimated=true` دارند؛ hidden reasoning و prompt داخلی
+سرویس در این عدد قابل مشاهده نیستند. پاسخ Gemini شمارش واقعی upstream را در
+`usageMetadata` برمی‌گرداند.
+
+## Function / tool call
+
+`/v1/chat/completions` قرارداد استاندارد OpenAI برای `tools`، `tool_choice`،
+`parallel_tool_calls`، `assistant.tool_calls` و `role=tool` را می‌پذیرد. این
+قابلیت در هر دو مسیر `chatgpt-web` و مدل‌های مستقیم فعال است.
+
+تعریف ابزار به instruction ساخت‌یافتهٔ همان درخواست تبدیل می‌شود. اگر مدل
+ابزار بخواهد، خروجی را به شکل `tool_calls` با `finish_reason=tool_calls`
+برمی‌گرداند. برنامهٔ caller ابزار را اجرا می‌کند و در درخواست بعدی نتیجه را
+با همان `tool_call_id` می‌فرستد. Go آن call و نتیجه را به history همان
+conversation بازمی‌گرداند؛ state ابزار را خودش نگه نمی‌دارد.
+
+```json
+{
+  "model": "iran/ggt-5.6-thinking-off",
+  "tool_choice": "required",
+  "parallel_tool_calls": false,
+  "tools": [{
+    "type": "function",
+    "function": {
+      "name": "lookup_weather",
+      "parameters": {
+        "type": "object",
+        "properties": {"city": {"type": "string"}},
+        "required": ["city"]
+      }
+    }
+  }],
+  "messages": [{"role": "user", "content": "Weather in Tehran?"}]
+}
+```
+
+برای turn بعدی، `conversation_id` و `parent_message_id` از `lab_metadata`
+پاسخ اول و call برگشتی از `message.tool_calls` استفاده می‌شود:
+
+```json
+{
+  "model": "iran/ggt-5.6-thinking-off",
+  "conversation_id": "<conversation_id>",
+  "parent_message_id": "<parent_message_id>",
+  "messages": [
+    {"role": "assistant", "content": null, "tool_calls": ["<call from previous response>"]},
+    {"role": "tool", "tool_call_id": "<call id>", "content": "{\"city\":\"Tehran\",\"temperature_c\":26}"}
+  ]
+}
+```
+
+`tool_choice=none` ابزار را غیرفعال می‌کند؛ `required` و selector یک function
+مدل را ملزم به call می‌کنند. در حالت `parallel_tool_calls=false` فقط نخستین
+call معتبر برگردانده می‌شود. آرگومان call باید JSON object معتبر باشد؛ JSON
+تو‌در‌تو و رشته‌های دارای `{}` نیز بدون regex parse می‌شوند.
 
 ## conversation خودکار
 
@@ -108,7 +172,7 @@ CHATGPT_CONVERSATION_LEASE_SECONDS=1800
 
 ```json
 {
-  "model": "chatgpt/gpt-5.6-pro",
+  "model": "chatgpt/gpt-5.6-thinking-extended",
   "conversation_id": "<id from previous response>",
   "parent_message_id": "<assistant message id from previous response>",
   "messages": [
@@ -140,7 +204,7 @@ CHATGPT_CONVERSATION_LEASE_SECONDS=1800
 تست دو turn مستقیم:
 
 ```bash
-CHATGPT_MODEL=chatgpt/gpt-5.6-pro python examples/chatgpt_openai.py
+CHATGPT_MODEL=chatgpt/gpt-5.6-thinking-extended python examples/chatgpt_openai.py
 ```
 
 همان مثال با مسیر UI:
@@ -154,6 +218,8 @@ CHATGPT_MODEL=chatgpt-web python examples/chatgpt_openai.py
 ```bash
 python examples/chatgpt_image.py
 ```
+
+`POST /v1/images/generations` علاوه بر JSON متنی، آپلود چند تصویر مرجع را با `multipart/form-data` و فیلد تکراری `image` می‌پذیرد؛ نمونهٔ `curl` در [examples/README.md](../examples/README.md) آمده است.
 
 ## معیار Smoke معتبر
 

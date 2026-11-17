@@ -19,6 +19,12 @@ A Vertex- and OpenAI-compatible Go gateway running independent AI Studio and
 ChatGPT Chrome profiles, the browser extension, Token Factory, and APIs in one
 container. Redis is the only side service.
 
+ساخت و دانلود ویدیوی AI Studio از مسیر `POST /v1/videos/generations` و مدل
+`gemini-omni-1.1-flash` در [راهنمای ویدیو](docs/aistudio-video.fa.md) توضیح داده شده است.
+
+برای سرورهای مشترک، فلگ‌های کم‌مصرف و راه‌اندازی پروفایل‌ها هنگام نیاز در
+[راهنمای منابع مرورگر](docs/browser-resources.fa.md) توضیح داده شده است.
+
 ## نمونه کامل Docker Compose / Complete Docker Compose example
 
 اتصال به proxy آزمایشگاه الزامی است. پیش از اجرا مطمئن شوید proxy میزبان روی
@@ -139,6 +145,14 @@ AISTUDIO_AUTH_USER2: "0"
 `chatgpt.com` را با همان افزونه و قالب Netscape استخراج و در
 `CHATGPT_COOKIES/*.txt` قرار دهید. فایل اول `chatgpt` و فایل دوم `chatgpt2`
 است. دو فایل Google و یک فایل ChatGPT دقیقاً سه process مرورگر مستقل می‌سازند.
+
+برای استقرار روی سرور و انتقال cookieهای محلی با SSH، راهنمای
+[`docs/deploy-server.fa.md`](docs/deploy-server.fa.md) و این دو ابزار را ببینید:
+
+```bash
+scripts/sync_sessions_to_server.sh deploy@your-server:/srv/aistudio-api
+scripts/open_vnc_tunnel.sh deploy@your-server
+```
 
 برای استخراج خودکار تمام sessionهای سالم ChatGPT از profileهای محلی Chrome،
 بدون چاپ مقدار cookie یا token:
