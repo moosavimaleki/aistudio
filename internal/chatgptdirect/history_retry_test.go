@@ -33,7 +33,7 @@ func TestHistoryRetryHonorsServerDelayWithoutResending(t *testing.T) {
 		t.Fatal(err)
 	}
 	httpClient := newTestHttpClient()
-	client := &Client{http: httpClient, origin: server.URL, sentinel: &sentinelClient{http: httpClient, sessionFile: path}}
+	client := &Client{http: httpClient, origin: server.URL, blackBox: &blackBoxClient{http: httpClient, sessionFile: path}}
 	state, err := client.conversation(context.Background(), "thread", "")
 	if err != nil || state.CurrentNode != "completed" || gets.Load() != 2 {
 		t.Fatal(state, err, gets.Load())

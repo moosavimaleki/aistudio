@@ -9,36 +9,37 @@ import (
 	tlsclient "github.com/bogdanfinn/tls-client"
 )
 
-type sentinelProofEngine interface {
-	initialProof(context.Context) (string, error)
-	enforcementEvidence(context.Context, string, string) (string, string, error)
+// blackBoxRuntime treats SDK calculations as opaque per-request data.
+type blackBoxRuntime interface {
+	initialize(context.Context) (string, error)
+	evaluate(context.Context, string, string) (string, string, error)
 }
 
 // Each submission gets fresh prepare/evidence/finalize results. Requirements
 // tokens and their evidence are never reused for another turn.
-type sentinelClient struct {
+type blackBoxClient struct {
 	http        tlsclient.HttpClient
 	cookieDir   string
 	baseURL     string
 	sessionFile string
-	node        sentinelProofEngine
+	runtime     blackBoxRuntime
 }
 
-func newSentinelClient(http tlsclient.HttpClient, cookieDir, baseURL string) *sentinelClient {
+func newBlackBoxClient(http tlsclient.HttpClient, cookieDir, baseURL string) *blackBoxClient {
 	if baseURL == "" {
 		baseURL = upstreamOrigin
 	}
-	return &sentinelClient{
+	return &blackBoxClient{
 		http: http, cookieDir: cookieDir, baseURL: baseURL,
-		node: newSentinelNodeRunner(sentinelSidecarPath()),
+		runtime: newBlackBoxRunner(blackBoxScriptPath()),
 	}
 }
 
-func sentinelSidecarPath() string {
-	if path := os.Getenv("SENTINEL_SIDECAR_PATH"); path != "" {
+func blackBoxScriptPath() string {
+	if path := os.Getenv("CHATGPT_BLACK_BOX_SCRIPT"); path != "" {
 		return path
 	}
-	for _, path := range []string{"assets/sentinel/sentinel-node-probe.js", "/app/sentinel/sentinel-node-probe.js"} {
+	for _, path := range []string{"assets/blackbox/runner.cjs", "/app/blackbox/runner.cjs"} {
 		if _, err := os.Stat(path); err == nil {
 			absolute, err := filepath.Abs(path)
 			if err == nil {
@@ -46,10 +47,10 @@ func sentinelSidecarPath() string {
 			}
 		}
 	}
-	return "/app/sentinel/sentinel-node-probe.js"
+	return "/app/blackbox/runner.cjs"
 }
 
-func (s *sentinelClient) authHeaders(ctx context.Context, browserID string) (map[string]string, error) {
+func (s *blackBoxClient) authHeaders(ctx context.Context, browserID string) (map[string]string, error) {
 	headers := map[string]string{}
 	if s.sessionFile != "" {
 		var err error
@@ -66,8 +67,8 @@ func (s *sentinelClient) authHeaders(ctx context.Context, browserID string) (map
 			return nil, err
 		}
 		headers["cookie"] = cookie
-		headers["user-agent"] = sentinelUserAgent
-		headers["accept-language"] = sentinelAcceptLanguage
+		headers["user-agent"] = clientUserAgent
+		headers["accept-language"] = clientAcceptLanguage
 		headers["oai-device-id"] = deriveDeviceID(cookie)
 		headers["oai-language"] = "en-US"
 		headers["origin"] = upstreamOrigin
@@ -84,12 +85,12 @@ func (s *sentinelClient) authHeaders(ctx context.Context, browserID string) (map
 	return headers, nil
 }
 
-func (s *sentinelClient) prepare(ctx context.Context, browserID string) (Artifacts, error) {
+func (s *blackBoxClient) prepare(ctx context.Context, browserID string) (Artifacts, error) {
 	headers, err := s.authHeaders(ctx, browserID)
 	if err != nil {
 		return Artifacts{}, err
 	}
-	initial, err := s.node.initialProof(ctx)
+	initial, err := s.runtime.initialize(ctx)
 	if err != nil {
 		return Artifacts{}, err
 	}
@@ -97,25 +98,25 @@ func (s *sentinelClient) prepare(ctx context.Context, browserID string) (Artifac
 	if err != nil {
 		return Artifacts{}, err
 	}
-	proof, turnstile, err := s.node.enforcementEvidence(ctx, string(prepare.raw), initial)
+	workToken, runtimeToken, err := s.runtime.evaluate(ctx, string(prepare.raw), initial)
 	if err != nil {
 		return Artifacts{}, err
 	}
-	missingProof := prepare.ProofOfWork.Required && proof == ""
-	missingVM := prepare.Turnstile.Required && turnstile == ""
-	if missingProof || missingVM {
-		return Artifacts{}, fmt.Errorf("sentinel SDK did not produce the required evidence")
+	missingWork := prepare.Work.Required && workToken == ""
+	missingRuntime := prepare.Runtime.Required && runtimeToken == ""
+	if missingWork || missingRuntime {
+		return Artifacts{}, fmt.Errorf("black box runtime did not produce the required evidence")
 	}
-	token, err := s.postFinalize(ctx, headers, prepare, proof, turnstile)
+	token, err := s.postFinalize(ctx, headers, prepare, workToken, runtimeToken)
 	if err != nil {
 		return Artifacts{}, err
 	}
-	headers["openai-sentinel-chat-requirements-token"] = token
-	if proof != "" {
-		headers["openai-sentinel-proof-token"] = proof
+	headers[requirementsTokenHeader] = token
+	if workToken != "" {
+		headers[workTokenHeader] = workToken
 	}
-	if turnstile != "" {
-		headers["openai-sentinel-turnstile-token"] = turnstile
+	if runtimeToken != "" {
+		headers[runtimeTokenHeader] = runtimeToken
 	}
 	return Artifacts{
 		Headers: headers, Cookies: headers["cookie"], UserAgent: headers["user-agent"], BrowserID: browserID,

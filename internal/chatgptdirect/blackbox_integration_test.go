@@ -33,10 +33,9 @@ func writeChatGPTCookie(t *testing.T, dir, value string) {
 	}
 }
 
-// TestSentinelPrepareFlow drives the full native sentinel pipeline (session →
-// warmup → challenge scrape → prepare PoW → /prepare → proof PoW → /finalize)
-// against a fake upstream, asserting evidence binding and per-turn preparation.
-func TestSentinelPrepareFlow(t *testing.T) {
+// TestBlackBoxPrepareFlow checks the session, preparation, evaluation, and
+// finalization contract against an HTTP fixture, including fresh per-turn data.
+func TestBlackBoxPrepareFlow(t *testing.T) {
 	var sessionHits int32
 	future := time.Now().Unix() + 3600
 	mux := http.NewServeMux()
@@ -69,7 +68,7 @@ func TestSentinelPrepareFlow(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Error(err)
 		}
-		if body["proofofwork"] != "fixture-proof" || body["turnstile"] != "fixture-vm" {
+		if body["proofofwork"] != "fixture-work-token" || body["turnstile"] != "fixture-runtime-token" {
 			t.Error("finalize must receive original evidence")
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
@@ -83,8 +82,8 @@ func TestSentinelPrepareFlow(t *testing.T) {
 	dir := t.TempDir()
 	writeChatGPTCookie(t, dir, "SESSIONVALUE")
 
-	client := newSentinelClient(newTestHttpClient(), dir, server.URL)
-	client.node = fixtureProofEngine{}
+	client := newBlackBoxClient(newTestHttpClient(), dir, server.URL)
+	client.runtime = fixtureBlackBox{}
 	artifacts, err := client.prepare(context.Background(), "default")
 	if err != nil {
 		t.Fatalf("prepare: %v", err)
@@ -106,10 +105,10 @@ func TestSentinelPrepareFlow(t *testing.T) {
 	if artifacts.Cookies != "__Secure-next.session.token=SESSIONVALUE" {
 		t.Errorf("cookies = %q", artifacts.Cookies)
 	}
-	if artifacts.UserAgent != sentinelUserAgent {
+	if artifacts.UserAgent != clientUserAgent {
 		t.Errorf("user agent = %q", artifacts.UserAgent)
 	}
-	if artifacts.Context.AcceptLanguage != sentinelAcceptLanguage {
+	if artifacts.Context.AcceptLanguage != clientAcceptLanguage {
 		t.Error("sec-ch-ua not propagated to context")
 	}
 	if len(artifacts.PrepareHeaders) != 0 {
@@ -125,28 +124,28 @@ func TestSentinelPrepareFlow(t *testing.T) {
 	}
 }
 
-type fixtureProofEngine struct{}
+type fixtureBlackBox struct{}
 
-func (fixtureProofEngine) initialProof(context.Context) (string, error) {
+func (fixtureBlackBox) initialize(context.Context) (string, error) {
 	return "fixture-initial", nil
 }
-func (fixtureProofEngine) enforcementEvidence(_ context.Context, _ string, initial string) (string, string, error) {
+func (fixtureBlackBox) evaluate(_ context.Context, _ string, initial string) (string, string, error) {
 	if initial != "fixture-initial" {
-		return "", "", fmt.Errorf("initial proof changed")
+		return "", "", fmt.Errorf("initial context changed")
 	}
-	return "fixture-proof", "fixture-vm", nil
+	return "fixture-work-token", "fixture-runtime-token", nil
 }
 
-// TestSentinelPrepareCookieErrors verifies the native path fails cleanly when no
+// TestBlackBoxPrepareCookieErrors verifies the native path fails cleanly when no
 // usable cookie is available, without contacting the network.
-func TestSentinelPrepareCookieErrors(t *testing.T) {
+func TestBlackBoxPrepareCookieErrors(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Error("server should not be contacted without a cookie")
 	}))
 	defer server.Close()
 
 	empty := t.TempDir()
-	client := newSentinelClient(newTestHttpClient(), empty, server.URL)
+	client := newBlackBoxClient(newTestHttpClient(), empty, server.URL)
 	if _, err := client.prepare(context.Background(), "default"); err == nil {
 		t.Error("expected error when CHATGPT_COOKIE_DIR has no cookie files")
 	}
@@ -155,7 +154,7 @@ func TestSentinelPrepareCookieErrors(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "empty.txt"), []byte("# Netscape HTTP Cookie File\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	client = newSentinelClient(newTestHttpClient(), dir, server.URL)
+	client = newBlackBoxClient(newTestHttpClient(), dir, server.URL)
 	if _, err := client.prepare(context.Background(), "default"); err == nil {
 		t.Error("expected error when the cookie file has no chatgpt.com cookies")
 	}

@@ -1,4 +1,4 @@
-// Command chatgpt-direct serves ChatGPT using HTTP and a local Sentinel SDK runner.
+// Command chatgpt-direct serves sequential chat through the direct HTTP client.
 package main
 
 import (
@@ -30,7 +30,7 @@ func run() error {
 	listen := flag.String("listen", "127.0.0.1:8788", "loopback HTTP address")
 	session := flag.String("session", os.Getenv("CHATGPT_SESSION_FILE"), "chatgpt-web session snapshot")
 	cookies := flag.String("cookie-dir", os.Getenv("CHATGPT_COOKIE_DIR"), "Netscape cookie directory (alternative to session)")
-	script := flag.String("sentinel-script", os.Getenv("SENTINEL_SIDECAR_PATH"), "Node Sentinel SDK runner")
+	script := flag.String("black-box-script", os.Getenv("CHATGPT_BLACK_BOX_SCRIPT"), "Black Box runtime script")
 	proxy := flag.String("proxy", os.Getenv("AISTUDIO_PROXY_URL"), "optional HTTP/SOCKS proxy")
 	model := flag.String("model", "chatgpt/gpt-5.6-thinking-extended", "direct model name")
 	upstream := flag.String("upstream", "https://chatgpt.com", "upstream origin")
@@ -55,7 +55,7 @@ func run() error {
 	}
 	client, err := chatgptdirect.NewNativeClient(chatgptdirect.NativeConfig{
 		SessionFile: *session, CookieDir: *cookies, ProxyURL: *proxy,
-		SentinelScript: *script, BaseURL: *upstream,
+		BlackBoxScript: *script, BaseURL: *upstream,
 	})
 	if err != nil {
 		return err
@@ -83,7 +83,7 @@ func run() error {
 		case <-done:
 		}
 	}()
-	log.Printf("direct Go API listening on http://%s (no browser or daemon socket)", *listen)
+	log.Printf("direct API listening on http://%s", *listen)
 	err = server.Serve(listener)
 	close(done)
 	if errors.Is(err, http.ErrServerClosed) {

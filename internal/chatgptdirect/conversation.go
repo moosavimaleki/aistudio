@@ -48,10 +48,10 @@ func (c *Client) conversation(ctx context.Context, id, profile string) (conversa
 }
 
 func (c *Client) readConversation(ctx context.Context, id, profile string) (conversationState, time.Duration, error) {
-	if c.sentinel == nil {
+	if c.blackBox == nil {
 		return conversationState{}, 0, fmt.Errorf("history access requires a native direct client")
 	}
-	headers, err := c.sentinel.authHeaders(ctx, profile)
+	headers, err := c.blackBox.authHeaders(ctx, profile)
 	if err != nil {
 		return conversationState{}, 0, err
 	}

@@ -1,6 +1,6 @@
 ARG CHROME_BASE_IMAGE=moosavimaleki/ai-chrome-base:latest
 
-FROM node:24-bookworm-slim AS sentinel-runtime
+FROM node:24-bookworm-slim AS blackbox-runtime
 
 FROM golang:1.24-bookworm AS go-builder
 
@@ -30,8 +30,8 @@ WORKDIR /app
 
 COPY config ./config
 COPY --from=go-builder /out/browser-interface /app/bin/browser-interface
-COPY --from=sentinel-runtime /usr/local/bin/node /usr/local/bin/node
-COPY assets/sentinel ./sentinel
+COPY --from=blackbox-runtime /usr/local/bin/node /usr/local/bin/node
+COPY assets/blackbox ./blackbox
 COPY --from=go-builder /out/gencontent /app/bin/gencontent
 COPY --from=go-builder /build/assets/extension ./extension
 COPY container/runtime/entrypoint.sh ./runtime/entrypoint.sh
@@ -48,7 +48,7 @@ ENV CHROME_EXECUTABLE=/usr/bin/google-chrome
 ENV CHROME_RUNTIME_DIR=/tmp/aistudio-browsers
 ENV EXTENSION_SOURCE_DIR=/app/extension
 ENV AISTUDIO_RUNTIME_DIR=/app/runtime/state
-ENV SENTINEL_SIDECAR_PATH=/app/sentinel/sentinel-node-probe.js
+ENV CHATGPT_BLACK_BOX_SCRIPT=/app/blackbox/runner.cjs
 
 EXPOSE 3345 8000
 HEALTHCHECK --interval=5s --timeout=3s --retries=20 \

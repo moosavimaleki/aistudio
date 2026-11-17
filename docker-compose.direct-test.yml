@@ -19,7 +19,7 @@ services:
       GENCONTENT_PORT: "8000"
       CHATGPT_MODE: direct
       CHATGPT_SESSION_FILE: /app/chatgpt-session/session.json
-      SENTINEL_SIDECAR_PATH: /app/sentinel/sentinel-node-probe.js
+      CHATGPT_BLACK_BOX_SCRIPT: /app/blackbox/runner.cjs
       REDIS_URL: redis://test-redis:6379/0
       METRICS_NAMESPACE: direct-test
       AISTUDIO_PROXY_URL: "${DIRECT_TEST_PROXY:-http://host.docker.internal:10809}"

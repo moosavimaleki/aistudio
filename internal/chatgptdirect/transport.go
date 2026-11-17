@@ -145,9 +145,9 @@ func setHeaderOrder(request *fhttp.Request, path string) {
 		order = append(order,
 			"oai-echo-logs",
 			"oai-telemetry",
-			"openai-sentinel-chat-requirements-token",
-			"openai-sentinel-proof-token",
-			"openai-sentinel-turnstile-token",
+			requirementsTokenHeader,
+			workTokenHeader,
+			runtimeTokenHeader,
 		)
 	}
 	order = append(order,

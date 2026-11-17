@@ -1,4 +1,4 @@
-# API مستقیم ChatGPT با Go
+# کلاینت Go و API آزمایشگاه ChatGPT
 
 ## استفاده از سرور اصلی پروژه
 
@@ -8,7 +8,7 @@
 |---|---|
 | `browser` | مسیر قبلی مرورگر با نمایش پنجره |
 | `headless` | مسیر مرورگر با Chrome headless |
-| `direct` | ارسال Go و Sentinel محلی، بدون مرورگر ChatGPT |
+| `direct` | ارتباط HTTP با Go و اجرای محلی Black Box |
 
 در دو حالت مرورگر، تنظیم نمایش Chrome در این پروژه مشترک است و برای
 مرورگرهای AI Studio هم اعمال می‌شود. مقدار خالی، رفتار قبلی مبتنی بر مدل و
@@ -64,8 +64,8 @@ python3 scripts/smoke_chatgpt_integrated.py \
 ## فرمان مستقل اختیاری
 
 این فرمان مستقل از TUI، مرورگر، افزونه، Token Factory و daemon.sock اجرا می‌شود.
-درخواست‌ها، نشست، خواندن SSE و HTTP server با Go هستند. تنها اجرای SDK
-Sentinel با Node 22+ انجام می‌شود؛ فایل SDK runner داخل همین پروژه موجود است.
+درخواست‌ها، نشست، خواندن SSE و HTTP server با Go هستند. محاسبات SDK در بخش
+`Black Box` و با Node 22+ اجرا می‌شوند؛ runtime داخل همین پروژه قرار دارد.
 
 ## اجرا
 
@@ -83,7 +83,7 @@ go run ./cmd/chatgpt-direct -listen 127.0.0.1:8788
 ```bash
 go run ./cmd/chatgpt-direct \
   -session /path/to/session.json \
-  -sentinel-script assets/sentinel/sentinel-node-probe.js
+  -black-box-script assets/blackbox/runner.cjs
 ```
 
 یا از export کوکی Netscape موجود پروژه استفاده کرد:
@@ -94,7 +94,8 @@ go run ./cmd/chatgpt-direct -cookie-dir ./CHATGPT_COOKIES
 
 `-session` و `-cookie-dir` جایگزین هم هستند. گزینه‌های `-proxy`، `-model`،
 `-upstream` و `-listen` نیز موجودند. `-upstream` برای سرور آزمایش محلی یا
-staging قابل تنظیم است. برنامه `.env` را خودکار نمی‌خواند.
+staging قابل تنظیم است؛ HTTP فقط برای آدرس loopback مجاز است و اتصال راه دور
+به HTTPS نیاز دارد. برنامه `.env` را خودکار نمی‌خواند.
 
 ## شروع و ادامهٔ گفتگو
 
@@ -118,8 +119,9 @@ curl http://127.0.0.1:8788/chat \
 از HTTP handler تا شبکه و subprocess منتقل می‌شوند. شکست ارسال باعث ارسال
 خودکار مجدد نمی‌شود؛ برای نتیجهٔ مبهم، تاریخچه را پیش از تلاش دوباره بررسی کن.
 
-برای هر ارسال، مدارک Sentinel تازه ساخته می‌شوند. هر دو مدرک proof و VM
-در مرحلهٔ finalize قرار می‌گیرند. پاسخ نهایی با وضعیت `finished_successfully`
+برای هر ارسال، `Black Box` داده‌های محاسباتی تازه تولید می‌کند. خروجی‌های
+`work_token` و `runtime_token` در مرحلهٔ نهایی‌سازی به قرارداد سرور نگاشت می‌شوند.
+پاسخ نهایی با وضعیت `finished_successfully`
 همراه با پایان SSE (`[DONE]`) تأیید موفقیت است. شناسهٔ پاسخ برای ادامهٔ همان
 گفتگو نگه داشته می‌شود تا قبل و بعد از هر پیام، تاریخچه دوباره خوانده نشود.
 پس از restart یا برای پاسخ ناقص، تاریخچه خوانده می‌شود. محدودیت `429` این
@@ -147,6 +149,7 @@ python3 scripts/smoke_chatgpt_integrated.py --url http://127.0.0.1:3350
 ```bash
 go test -race ./internal/chatgptdirect ./internal/directapi ./cmd/chatgpt-direct
 go vet ./...
+node --test assets/blackbox/protocol.test.cjs
 python3 scripts/smoke_chatgpt_direct.py \
   --url http://127.0.0.1:8788 \
   --report /tmp/chatgpt-go-direct-20-turns.json
@@ -154,3 +157,30 @@ python3 scripts/smoke_chatgpt_direct.py \
 
 تست آخر ۲۰ پیام واقعی می‌فرستد و در پایان اطلاعات پیام اول را می‌پرسد.
 `GET /health` فقط سلامت پردازش HTTP را نشان می‌دهد.
+
+## مرز Black Box
+
+سه مسیر، یک قرارداد HTTP برای آزمایش تعامل end-to-end دارند. در مسیر `direct`،
+نشست، ارسال HTTP، پردازش SSE و پیوستگی گفتگو در Go مدیریت می‌شوند. بخش
+`Black Box` محاسبات SDK را پشت دو عملیات initialization و evaluation قرار
+می‌دهد؛ خروجی برای فراخواننده opaque است و برای هر نوبت تازه ساخته می‌شود.
+
+فایل‌های runtime در `assets/blackbox/` و آداپتور Go در
+`internal/chatgptdirect/blackbox*.go` هستند. مسیر runtime با
+`CHATGPT_BLACK_BOX_SCRIPT` یا `-black-box-script` تعیین می‌شود. مدت cache SDK
+با `CHATGPT_BLACK_BOX_CACHE_TTL_MS` تنظیم می‌شود (پیش‌فرض شش ساعت).
+نام‌های فیلد، header و endpoint در آداپتور پروتکل مطابق قرارداد سرور باقی
+می‌مانند؛ نام‌های داخلی و خطاهای محلی از واژگان Black Box استفاده می‌کنند.
+
+## نگهداری امن نشست و انتقال داده
+
+اتصال راه دور از HTTPS با اعتبارسنجی گواهی استفاده می‌کند و redirect خودکار
+غیرفعال است. HTTP فقط برای loopback در تست محلی مجاز است. فایل‌های نشست و
+کوکی خارج از Git و image قرار می‌گیرند و فقط با دسترسی لازم خوانده می‌شوند.
+محتوای نشست، ورودی محاسبات و خروجی خام runtime وارد خطاهای API نمی‌شوند.
+
+SDK کد مورد اعتماد محیط آزمایش است و در پردازش مجزای Node اجرا می‌شود؛ context
+اجرای JavaScript مرز امنیتی برای کد نامطمئن محسوب نمی‌شود. پردازش runtime
+فقط متغیرهای محیطی لازم را دریافت می‌کند و نشست و bearer را دریافت نمی‌کند.
+امنیت ارتباط بر TLS و حفاظت از اعتبارنامه‌ها متکی است؛ نام مسیرهای API بخشی
+از قرارداد ارتباطی است.

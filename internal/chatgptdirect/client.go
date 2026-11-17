@@ -14,7 +14,7 @@ const upstreamOrigin = "https://chatgpt.com"
 
 type Client struct {
 	bridge     *bridgeClient
-	sentinel   *sentinelClient
+	blackBox   *blackBoxClient
 	http       tlsclient.HttpClient
 	origin     string
 	nativeGate chan struct{}
@@ -22,11 +22,11 @@ type Client struct {
 }
 
 func NewClient(factoryOrigin, proxyURL string) (*Client, error) {
-	if nativeSentinelEnabled() {
+	if directModeEnabled() {
 		return NewNativeClient(NativeConfig{
 			SessionFile: os.Getenv("CHATGPT_SESSION_FILE"),
 			CookieDir:   nativeCookieDirectory(), ProxyURL: proxyURL,
-			SentinelScript: os.Getenv("SENTINEL_SIDECAR_PATH"),
+			BlackBoxScript: os.Getenv("CHATGPT_BLACK_BOX_SCRIPT"),
 			BaseURL:        os.Getenv("CHATGPT_UPSTREAM_ORIGIN"),
 		})
 	}
@@ -41,9 +41,9 @@ func NewClient(factoryOrigin, proxyURL string) (*Client, error) {
 	return client, nil
 }
 
-// nativeSentinelEnabled reports whether the cookie-auth native path is requested
-// via CHATGPT_DIRECT_NATIVE. When set, the browser/extension bridge is bypassed.
-func nativeSentinelEnabled() bool {
+// directModeEnabled selects the HTTP client and local Black Box runtime.
+// CHATGPT_DIRECT_NATIVE is accepted when CHATGPT_MODE is unset.
+func directModeEnabled() bool {
 	mode := os.Getenv("CHATGPT_MODE")
 	if mode != "" {
 		return mode == "direct"
@@ -58,12 +58,10 @@ func nativeCookieDirectory() string {
 	return os.Getenv("CHATGPT_COOKIE_DIR")
 }
 
-// prepareArtifacts returns browser-ready Artifacts for browserID. When the
-// native sentinel path is enabled it produces the Sentinel tokens from the
-// stored cookie; otherwise it falls back to the browser/extension bridge.
+// prepareArtifacts obtains per-request credentials from the configured provider.
 func (c *Client) prepareArtifacts(ctx context.Context, browserID string) (Artifacts, error) {
-	if c.sentinel != nil {
-		return c.sentinel.prepare(ctx, browserID)
+	if c.blackBox != nil {
+		return c.blackBox.prepare(ctx, browserID)
 	}
 	return c.bridge.prepare(ctx, prepareRequest{BrowserID: browserID})
 }
@@ -82,7 +80,7 @@ func (c *Client) Generate(ctx context.Context, input Input) (Result, error) {
 		return Result{}, err
 	}
 	if input.ConversationID != "" && input.ParentMessageID == "" {
-		if c.sentinel == nil {
+		if c.blackBox == nil {
 			return Result{}, fmt.Errorf("parent_message_id is required when conversation_id is set")
 		}
 		input.ParentMessageID = c.parents[input.BrowserID+"\x00"+input.ConversationID]
@@ -123,7 +121,7 @@ func (c *Client) generateOnce(
 	if err != nil {
 		return Result{}, err
 	}
-	if c.sentinel != nil {
+	if c.blackBox != nil {
 		// Match the verified direct protocol: full SSE snapshots, no browser
 		// conduit preparation and no dependency on the frontend patch codec.
 		payload.SupportsBuffering = false
@@ -176,7 +174,7 @@ func (c *Client) generateOnce(
 	if parsed.ConversationID == "" {
 		parsed.ConversationID = input.ConversationID
 	}
-	if c.sentinel != nil {
+	if c.blackBox != nil {
 		return c.confirmTurn(ctx, parsed, payload, input.Model, artifacts.BrowserID)
 	}
 	if strings.TrimSpace(parsed.Text) == "" {

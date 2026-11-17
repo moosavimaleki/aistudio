@@ -12,16 +12,14 @@ import (
 	fhttp "github.com/bogdanfinn/fhttp"
 )
 
-// ChatGPT build fingerprint. Mirrors the HAR capture of the live chatgpt.com
-// Codex frontend; the data-build (oai-client-version) is scraped per session
-// with this value as the offline fallback.
+// Default HTTP metadata used when the session does not supply client headers.
 const (
-	sentinelUserAgent       = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36"
-	sentinelSecCHUA         = `"Not;A=Brand";v="8", "Chromium";v="150", "Google Chrome";v="150"`
-	sentinelSecCHUAPlatform = "Linux"
-	sentinelAcceptLanguage  = "en-US,en;q=0.9,fa;q=0.8,cs;q=0.7"
-	sentinelJSDScript       = "https://chatgpt.com/cdn-cgi/challenge-platform/scripts/jsd/api.js?onload=jsdOnload"
-	sentinelFALLBACKDPL     = "ef0c3fb941611420d8683bf88f61acf1a8ac6b19"
+	clientUserAgent      = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36"
+	clientSecCHUA        = `"Not;A=Brand";v="8", "Chromium";v="150", "Google Chrome";v="150"`
+	clientPlatform       = "Linux"
+	clientAcceptLanguage = "en-US,en;q=0.9,fa;q=0.8,cs;q=0.7"
+	clientRuntimeScript  = "https://chatgpt.com/cdn-cgi/challenge-platform/scripts/jsd/api.js?onload=jsdOnload"
+	clientBuildFallback  = "ef0c3fb941611420d8683bf88f61acf1a8ac6b19"
 )
 
 type tokenEntry struct {
@@ -33,7 +31,7 @@ type tokenEntry struct {
 // getSession calls GET /api/auth/session with the cookie and returns the JWT
 // access token, account id, and expiry. ChatGPT authenticates upstream calls
 // with this token as `Authorization: Bearer` alongside the session cookie.
-func (s *sentinelClient) getSession(ctx context.Context, cookie string) (tokenEntry, error) {
+func (s *blackBoxClient) getSession(ctx context.Context, cookie string) (tokenEntry, error) {
 	req, err := fhttp.NewRequestWithContext(ctx, fhttp.MethodGet, s.baseURL+"/api/auth/session", nil)
 	if err != nil {
 		return tokenEntry{}, err
@@ -120,20 +118,20 @@ func parseExpires(raw json.RawMessage) (time.Time, error) {
 	}
 	return time.Unix(secs, 0), nil
 }
-func (s *sentinelClient) applyHeaders(req *fhttp.Request, cookie string) {
+func (s *blackBoxClient) applyHeaders(req *fhttp.Request, cookie string) {
 	req.Header.Set("Accept", "*/*")
 	req.Header.Set("Accept-Encoding", "gzip, deflate, br, zstd")
-	req.Header.Set("Accept-Language", sentinelAcceptLanguage)
+	req.Header.Set("Accept-Language", clientAcceptLanguage)
 	req.Header.Set("Cookie", cookie)
 	req.Header.Set("Origin", upstreamOrigin)
 	req.Header.Set("Referer", upstreamOrigin+"/")
-	req.Header.Set("Sec-CH-UA", sentinelSecCHUA)
+	req.Header.Set("Sec-CH-UA", clientSecCHUA)
 	req.Header.Set("Sec-CH-UA-Mobile", "?0")
 	req.Header.Set("Sec-CH-UA-Platform", `"Linux"`)
 	req.Header.Set("Sec-Fetch-Dest", "empty")
 	req.Header.Set("Sec-Fetch-Mode", "cors")
 	req.Header.Set("Sec-Fetch-Site", "same-origin")
-	req.Header.Set("User-Agent", sentinelUserAgent)
+	req.Header.Set("User-Agent", clientUserAgent)
 }
 
 // deriveDeviceID builds a stable per-cookie device id (UUID form) for the

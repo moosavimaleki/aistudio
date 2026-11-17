@@ -2,25 +2,24 @@ package chatgptdirect
 
 import (
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"strings"
 )
 
-// NativeConfig selects authentication and the SDK runner for direct HTTP chat.
-// Exactly one of SessionFile and CookieDir must be provided. No browser or
-// Token Factory is contacted by this client.
+// NativeConfig configures authentication, transport, and the Black Box runtime.
+// Exactly one of SessionFile and CookieDir must be provided.
 type NativeConfig struct {
 	SessionFile    string
 	CookieDir      string
 	ProxyURL       string
-	SentinelScript string
+	BlackBoxScript string
 	BaseURL        string
 }
 
-// NewNativeClient creates a direct client with no browser fallback. SessionFile
-// accepts the version-1 snapshot produced by chatgpt-web; CookieDir accepts the
-// project's existing Netscape cookie exports.
+// NewNativeClient creates a direct HTTP client. SessionFile accepts a version-1
+// session snapshot; CookieDir accepts Netscape cookie exports.
 func NewNativeClient(config NativeConfig) (*Client, error) {
 	if (config.SessionFile == "") == (config.CookieDir == "") {
 		return nil, fmt.Errorf("provide exactly one of session file or cookie directory")
@@ -33,27 +32,33 @@ func NewNativeClient(config NativeConfig) (*Client, error) {
 	if err != nil || parsed.Host == "" || (parsed.Scheme != "https" && parsed.Scheme != "http") {
 		return nil, fmt.Errorf("invalid ChatGPT upstream origin")
 	}
-	if parsed.Path != "" || parsed.RawQuery != "" || parsed.User != nil {
+	if parsed.Path != "" || parsed.RawQuery != "" || parsed.ForceQuery || parsed.User != nil || parsed.Fragment != "" {
 		return nil, fmt.Errorf("ChatGPT upstream must be an origin without credentials or path")
+	}
+	if parsed.Scheme != "https" {
+		ip := net.ParseIP(parsed.Hostname())
+		if parsed.Hostname() != "localhost" && (ip == nil || !ip.IsLoopback()) {
+			return nil, fmt.Errorf("upstream requires https; http is allowed only for loopback test servers")
+		}
 	}
 	httpClient, err := newBrowserHTTP(config.ProxyURL)
 	if err != nil {
 		return nil, err
 	}
-	sentinel := newSentinelClient(httpClient, config.CookieDir, origin)
-	script := config.SentinelScript
+	blackBox := newBlackBoxClient(httpClient, config.CookieDir, origin)
+	script := config.BlackBoxScript
 	if script == "" {
-		script = sentinelSidecarPath()
+		script = blackBoxScriptPath()
 	}
-	sentinel.node = newSentinelNodeRunner(script)
+	blackBox.runtime = newBlackBoxRunner(script)
 	if config.SessionFile != "" {
 		if _, err := loadSavedHeaders(config.SessionFile); err != nil {
 			return nil, err
 		}
-		sentinel.sessionFile = config.SessionFile
+		blackBox.sessionFile = config.SessionFile
 	}
 	if _, err := os.Stat(script); err != nil {
-		return nil, fmt.Errorf("sentinel SDK runner not found: %w", err)
+		return nil, fmt.Errorf("black box runtime runner not found: %w", err)
 	}
-	return &Client{http: httpClient, sentinel: sentinel, origin: origin, nativeGate: make(chan struct{}, 1), parents: map[string]string{}}, nil
+	return &Client{http: httpClient, blackBox: blackBox, origin: origin, nativeGate: make(chan struct{}, 1), parents: map[string]string{}}, nil
 }
