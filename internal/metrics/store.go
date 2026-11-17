@@ -5,12 +5,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/redis/go-redis/v9"
 )
 
-var latencyBuckets = []float64{100, 250, 500, 1000, 2500, 5000, 10000, 30000, 60000}
+// LatencyBucketsMS starts at one second and covers long model responses.
+func LatencyBucketsMS() []float64 {
+	return []float64{1000, 2500, 5000, 10000, 30000, 60000, 120000, 180000, 300000}
+}
 
 type Store struct {
 	Redis                     *redis.Client
@@ -38,9 +42,9 @@ func (s *Store) Timing(ctx context.Context, name string, elapsed float64, labels
 	s.write(ctx, func(pipe redis.Pipeliner, key string) {
 		pipe.HIncrByFloat(ctx, key, Field(name+".count", labels), 1)
 		pipe.HIncrByFloat(ctx, key, Field(name+".sum_ms", labels), elapsed)
-		for _, boundary := range latencyBuckets {
+		for _, boundary := range LatencyBucketsMS() {
 			if elapsed <= boundary {
-				pipe.HIncrByFloat(ctx, key, Field(fmt.Sprintf("%s.le_%g", name, boundary), labels), 1)
+				pipe.HIncrByFloat(ctx, key, Field(BucketMetric(name, boundary), labels), 1)
 			}
 		}
 		pipe.HIncrByFloat(ctx, key, Field(name+".le_inf", labels), 1)
@@ -110,4 +114,9 @@ func intEnv(name string, fallback int) int {
 		return value
 	}
 	return fallback
+}
+
+// BucketMetric provides one encoding for histogram writers and readers.
+func BucketMetric(name string, boundary float64) string {
+	return name + ".le_" + strconv.FormatFloat(boundary, 'f', -1, 64)
 }

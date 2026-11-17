@@ -7,6 +7,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/hamed/aistudio-api/internal/metrics"
+
 	tlsclient "github.com/bogdanfinn/tls-client"
 )
 
@@ -68,10 +70,13 @@ func (c *Client) prepareArtifacts(ctx context.Context, browserID string) (Artifa
 
 func (c *Client) Generate(ctx context.Context, input Input) (Result, error) {
 	if c.nativeGate != nil {
+		queued := metrics.Phase(ctx, "direct_queue")
 		select {
 		case c.nativeGate <- struct{}{}:
+			queued()
 			defer func() { <-c.nativeGate }()
 		case <-ctx.Done():
+			queued()
 			return Result{}, ctx.Err()
 		}
 	}
@@ -113,7 +118,9 @@ func (c *Client) generateOnce(
 	prompt string,
 	parentMessageID string,
 ) (Result, error) {
+	prepared := metrics.Phase(ctx, "gpt_artifacts")
 	artifacts, err := c.prepareArtifacts(ctx, input.BrowserID)
+	prepared()
 	if err != nil {
 		return Result{}, err
 	}
@@ -138,7 +145,9 @@ func (c *Client) generateOnce(
 		}
 		artifacts.Headers["x-oai-turn-trace-id"] = turnTraceID
 		artifacts.PrepareHeaders["x-oai-turn-trace-id"] = turnTraceID
+		turnPrepared := metrics.Phase(ctx, "gpt_turn_prepare")
 		conduitToken, prepareErr := c.prepareTurn(ctx, artifacts, preparePayload)
+		turnPrepared()
 		if prepareErr != nil {
 			return Result{}, prepareErr
 		}
@@ -148,12 +157,16 @@ func (c *Client) generateOnce(
 	if err != nil {
 		return Result{}, err
 	}
+	headersReceived := metrics.Phase(ctx, "gpt_upstream_headers")
 	response, path, err := c.send(ctx, artifacts, body)
+	headersReceived()
 	if err != nil {
 		return Result{}, err
 	}
 	defer closeReadBody(response.Body)
+	bodyRead := metrics.Phase(ctx, "gpt_response_body")
 	data, err := readResponseBody(response)
+	bodyRead()
 	if err != nil {
 		return Result{}, err
 	}
@@ -167,7 +180,9 @@ func (c *Client) generateOnce(
 			CFMitigated: response.Header.Get("Cf-Mitigated"),
 		}
 	}
+	parsedDone := metrics.Phase(ctx, "gpt_parse")
 	parsed := parseEventStream(data)
+	parsedDone()
 	if parsed.Error != "" {
 		return Result{}, fmt.Errorf("ChatGPT direct stream error: %s", parsed.Error)
 	}

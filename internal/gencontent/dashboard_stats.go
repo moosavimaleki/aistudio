@@ -9,20 +9,22 @@ import (
 	"github.com/hamed/aistudio-api/internal/metrics"
 )
 
-var dashboardLatencyBuckets = []float64{100, 250, 500, 1000, 2500, 5000, 10000, 30000, 60000}
-
 type dashboardResponse struct {
-	GeneratedAt   time.Time          `json:"generatedAt"`
-	WindowMinutes int                `json:"windowMinutes"`
-	Summary       dashboardSummary   `json:"summary"`
-	Pool          map[string]any     `json:"pool"`
-	Profiles      []dashboardProfile `json:"profiles"`
-	Models        []dashboardModel   `json:"models"`
-	ErrorPhases   map[string]float64 `json:"errorPhases"`
-	ErrorStatuses map[string]float64 `json:"errorStatuses"`
-	Series        []dashboardSeries  `json:"series"`
-	Events        []map[string]any   `json:"events"`
-	BrowserError  string             `json:"browser_error,omitempty"`
+	ChatMode       string                   `json:"chatMode"`
+	Direct         *dashboardDirect         `json:"direct,omitempty"`
+	Timings        []dashboardTiming        `json:"timings"`
+	LatencyBuckets []dashboardLatencyBucket `json:"latencyBuckets"`
+	GeneratedAt    time.Time                `json:"generatedAt"`
+	WindowMinutes  int                      `json:"windowMinutes"`
+	Summary        dashboardSummary         `json:"summary"`
+	Pool           map[string]any           `json:"pool"`
+	Profiles       []dashboardProfile       `json:"profiles"`
+	Models         []dashboardModel         `json:"models"`
+	ErrorPhases    map[string]float64       `json:"errorPhases"`
+	ErrorStatuses  map[string]float64       `json:"errorStatuses"`
+	Series         []dashboardSeries        `json:"series"`
+	Events         []map[string]any         `json:"events"`
+	BrowserError   string                   `json:"browser_error,omitempty"`
 }
 
 type dashboardSummary struct {
@@ -103,14 +105,16 @@ func dashboardSnapshot(
 			TokenErrors:     int(responseTotal(window.Aggregate, failedTokenResponse)),
 			TokenLatencyP95: latencyPercentile(window.Aggregate, 0.95, tokenDuration),
 		},
-		Pool:          preparedPool,
-		Profiles:      dashboardProfiles(browser.Browsers),
-		Models:        dashboardModels(window.Aggregate),
-		ErrorPhases:   errorPhases(errors),
-		ErrorStatuses: errorStatuses(window.Aggregate),
-		Series:        dashboardSeriesFor(window.Minutes),
-		Events:        dashboardEvents(window.Events),
-		BrowserError:  browserError,
+		Pool:           preparedPool,
+		Profiles:       dashboardProfiles(browser.Browsers),
+		Models:         dashboardModels(window.Aggregate),
+		ErrorPhases:    errorPhases(errors),
+		ErrorStatuses:  errorStatuses(window.Aggregate),
+		Series:         dashboardSeriesFor(window.Minutes),
+		Events:         dashboardEvents(window.Events),
+		Timings:        dashboardTimings(window.Aggregate),
+		LatencyBuckets: dashboardHistogram(window.Aggregate),
+		BrowserError:   browserError,
 	}
 }
 
@@ -222,17 +226,7 @@ func responseTotal(values map[string]float64, match func(map[string]string) bool
 }
 
 func latencyPercentile(values map[string]float64, ratio float64, match func(map[string]string) bool) int {
-	count := metricTotal(values, "http.duration.count", match)
-	if count == 0 {
-		return 0
-	}
-	for _, boundary := range dashboardLatencyBuckets {
-		name := "http.duration.le_" + strconv.FormatFloat(boundary, 'f', -1, 64)
-		if metricTotal(values, name, match) >= count*ratio {
-			return int(boundary)
-		}
-	}
-	return int(dashboardLatencyBuckets[len(dashboardLatencyBuckets)-1])
+	return metricPercentile(values, "http.duration", ratio, match)
 }
 
 func metricTotal(values map[string]float64, name string, match func(map[string]string) bool) float64 {
@@ -262,7 +256,8 @@ func failedTokenResponse(labels map[string]string) bool {
 func generationDuration(labels map[string]string) bool { return generationRoute(labels["route"]) }
 func tokenDuration(labels map[string]string) bool      { return labels["route"] == "getToken" }
 func generationRoute(route string) bool {
-	return route == "generateContent" || route == "streamGenerateContent" || route == "legacyGenerateContent"
+	return route == "generateContent" || route == "streamGenerateContent" || route == "legacyGenerateContent" ||
+		route == "v1/chat/completions" || route == "v1/images/generations"
 }
 func successfulStatus(value string) bool {
 	status, _ := strconv.Atoi(value)

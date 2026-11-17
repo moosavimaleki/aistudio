@@ -11,6 +11,7 @@ import (
 
 	"github.com/hamed/aistudio-api/internal/chatgptdirect"
 	"github.com/hamed/aistudio-api/internal/chatgptweb"
+	"github.com/hamed/aistudio-api/internal/metrics"
 )
 
 type chatCompletionRequest struct {
@@ -40,6 +41,7 @@ func (s *Server) chatCompletions(writer http.ResponseWriter, request *http.Reque
 		openAIError(writer, http.StatusBadRequest, "model is required", "invalid_request_error")
 		return
 	}
+	metrics.SetLabel(request.Context(), "model", body.Model)
 	result, parentMessageID, transport, err := s.completeChat(request.Context(), body)
 	if err != nil {
 		openAIError(writer, chatCompletionStatus(err), err.Error(), "chatgpt_client_error")
@@ -57,15 +59,20 @@ func (s *Server) chatCompletions(writer http.ResponseWriter, request *http.Reque
 		writer.Header().Set("Cache-Control", "no-cache")
 		writer.Header().Set("X-Lab-Streaming-Mode", "buffered")
 		metadata := chatLabMetadata(body, result, parentMessageID, transport)
+		metadata["timings_ms"] = metrics.Phases(request.Context())
+		metadata["request_id"] = metrics.RequestID(request.Context())
 		content := map[string]any{"id": id, "object": "chat.completion.chunk", "created": created, "model": model, "choices": []any{map[string]any{"index": 0, "delta": map[string]any{"role": "assistant", "content": result.Text}, "finish_reason": nil}}, "lab_metadata": metadata}
 		finished := map[string]any{"id": id, "object": "chat.completion.chunk", "created": created, "model": model, "choices": []any{map[string]any{"index": 0, "delta": map[string]any{}, "finish_reason": "stop"}}, "lab_metadata": metadata}
 		fmt.Fprintf(writer, "data: %s\n\ndata: %s\n\ndata: [DONE]\n\n", mustJSON(content), mustJSON(finished))
 		return
 	}
+	metadata := chatLabMetadata(body, result, parentMessageID, transport)
+	metadata["timings_ms"] = metrics.Phases(request.Context())
+	metadata["request_id"] = metrics.RequestID(request.Context())
 	response := map[string]any{
 		"id": id, "object": "chat.completion", "created": created, "model": model,
 		"choices":      []any{map[string]any{"index": 0, "message": map[string]any{"role": "assistant", "content": result.Text}, "finish_reason": "stop"}},
-		"lab_metadata": chatLabMetadata(body, result, parentMessageID, transport),
+		"lab_metadata": metadata,
 	}
 	writeJSON(writer, http.StatusOK, response)
 }
@@ -110,7 +117,9 @@ func (s *Server) completeChat(
 		if s.conversationErr != nil {
 			return chatgptweb.Result{}, "", "", s.conversationErr
 		}
+		routed := metrics.Phase(ctx, "conversation_route")
 		route, err = s.conversations.Route(ctx, body.Model, body.BrowserID, messages, s.direct)
+		routed()
 		if err != nil {
 			return chatgptweb.Result{}, "", "", err
 		}
@@ -122,7 +131,10 @@ func (s *Server) completeChat(
 		return chatgptweb.Result{}, "", "", err
 	}
 	if route.finish != nil {
-		if err := route.Finish(context.Background(), result); err != nil {
+		saved := metrics.Phase(ctx, "conversation_save")
+		err := route.Finish(context.Background(), result)
+		saved()
+		if err != nil {
 			return chatgptweb.Result{}, "", "", err
 		}
 	}

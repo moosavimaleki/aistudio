@@ -15,6 +15,7 @@ type Dashboard struct {
 	pool          *Pool
 	browserOrigin string
 	client        *http.Client
+	mode          string
 }
 
 type browserHealth struct {
@@ -46,6 +47,7 @@ func NewDashboard(store *metrics.Store, pool *Pool, browserOrigin string) *Dashb
 		store:         store,
 		pool:          pool,
 		browserOrigin: browserOrigin,
+		mode:          dashboardMode(),
 		client:        &http.Client{Timeout: 3 * time.Second},
 	}
 }
@@ -71,15 +73,31 @@ func (d *Dashboard) data(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 	window := dashboardWindow(request.URL.Query().Get("window"))
-	browser, browserError := d.readBrowserHealth(request)
+	var browser browserHealth
+	var browserError string
+	pool := map[string]any{}
+	if d.mode != "direct" {
+		browser, browserError = d.readBrowserHealth(request)
+		pool = d.pool.Stats(request.Context())
+	}
 	metricsWindow := d.store.Read(request.Context(), window)
-	writeJSON(writer, http.StatusOK, dashboardSnapshot(
+	snapshot := dashboardSnapshot(
 		metricsWindow,
 		window,
-		d.pool.Stats(request.Context()),
+		pool,
 		browser,
 		browserError,
-	))
+	)
+	snapshot.ChatMode = d.mode
+	if d.mode == "direct" {
+		snapshot.Direct = directDashboardState()
+	}
+	writeJSON(writer, http.StatusOK, snapshot)
+}
+
+func dashboardMode() string {
+	mode, _ := chatMode()
+	return mode
 }
 
 func (d *Dashboard) style(writer http.ResponseWriter, request *http.Request) {

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/hamed/aistudio-api/internal/chatgptweb"
+	"github.com/hamed/aistudio-api/internal/metrics"
 )
 
 type imageGenerationRequest struct {
@@ -40,6 +41,7 @@ func (s *Server) imageGenerations(writer http.ResponseWriter, request *http.Requ
 		return
 	}
 	prompt := "Generate one image from this request. Return the image in the ChatGPT UI, not text only.\n\n" + body.Prompt
+	metrics.SetLabel(request.Context(), "model", body.Model)
 	result, err := s.chat.GenerateImage(request.Context(), prompt, body.BrowserID)
 	if err != nil {
 		openAIError(writer, chatBridgeStatus(err), err.Error(), "browser_bridge_error")

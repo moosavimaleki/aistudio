@@ -45,3 +45,13 @@ func TestDashboardRoutesExposeSessionMetadata(t *testing.T) {
 		t.Fatalf("dashboard response does not include browser health error: %s", data.Body.String())
 	}
 }
+
+func TestDashboardModelsIncludeOpenAIChat(t *testing.T) {
+	values := map[string]float64{
+		metrics.Field("http.response", map[string]any{"route": "v1/chat/completions", "model": "chatgpt/gpt-5.6-pro", "status": 200}): 2,
+	}
+	models := dashboardModels(values)
+	if len(models) != 1 || models[0].Model != "chatgpt/gpt-5.6-pro" || models[0].Success != 2 {
+		t.Fatalf("unexpected dashboard models: %#v", models)
+	}
+}

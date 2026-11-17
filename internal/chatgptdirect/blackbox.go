@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	tlsclient "github.com/bogdanfinn/tls-client"
+	"github.com/hamed/aistudio-api/internal/metrics"
 )
 
 // blackBoxRuntime treats SDK calculations as opaque per-request data.
@@ -86,19 +87,27 @@ func (s *blackBoxClient) authHeaders(ctx context.Context, browserID string) (map
 }
 
 func (s *blackBoxClient) prepare(ctx context.Context, browserID string) (Artifacts, error) {
+	doneSession := metrics.Phase(ctx, "auth_session")
 	headers, err := s.authHeaders(ctx, browserID)
+	doneSession()
 	if err != nil {
 		return Artifacts{}, err
 	}
+	doneInitial := metrics.Phase(ctx, "black_box_initial")
 	initial, err := s.runtime.initialize(ctx)
+	doneInitial()
 	if err != nil {
 		return Artifacts{}, err
 	}
+	donePrepare := metrics.Phase(ctx, "black_box_prepare")
 	prepare, err := s.postPrepare(ctx, headers, initial)
+	donePrepare()
 	if err != nil {
 		return Artifacts{}, err
 	}
+	doneEvaluate := metrics.Phase(ctx, "black_box_evaluate")
 	workToken, runtimeToken, err := s.runtime.evaluate(ctx, string(prepare.raw), initial)
+	doneEvaluate()
 	if err != nil {
 		return Artifacts{}, err
 	}
@@ -107,7 +116,9 @@ func (s *blackBoxClient) prepare(ctx context.Context, browserID string) (Artifac
 	if missingWork || missingRuntime {
 		return Artifacts{}, fmt.Errorf("black box runtime did not produce the required evidence")
 	}
+	doneFinalize := metrics.Phase(ctx, "black_box_finalize")
 	token, err := s.postFinalize(ctx, headers, prepare, workToken, runtimeToken)
+	doneFinalize()
 	if err != nil {
 		return Artifacts{}, err
 	}
