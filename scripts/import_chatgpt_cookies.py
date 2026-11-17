@@ -28,6 +28,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 GENERATED_EXPORT = re.compile(r"^chatgpt-\d{2}\.txt$")
 
 
+def should_sync_profile(profile_name: str) -> bool:
+    """Keep Chrome profiles explicitly prefixed with X out of account sync."""
+    return not profile_name.casefold().startswith("x")
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Import active chatgpt.com sessions from local Chrome profiles.",
@@ -50,7 +55,7 @@ def parse_args() -> argparse.Namespace:
             os.getenv("CHATGPT_PROXY_URL")
             or os.getenv("AISTUDIO_PROXY_URL")
             or os.getenv("LAB_PROXY_URL")
-            or "http://127.0.0.1:10811"
+            or "http://127.0.0.1:10809"
         ),
         help="Proxy used only to validate each ChatGPT session.",
     )
@@ -67,8 +72,15 @@ def main() -> int:
         print("No local Chrome profile with a Cookies database was found.")
         return 1
 
-    healthy = []
+    eligible_profiles = []
     for profile in profiles:
+        if should_sync_profile(profile.name):
+            eligible_profiles.append(profile)
+        else:
+            print(f"SKIP {profile.label}: profile name starts with X")
+
+    healthy = []
+    for profile in eligible_profiles:
         try:
             cookies = extract_chatgpt_cookies(profile)
             if not list(cookies):
@@ -86,6 +98,9 @@ def main() -> int:
         except Exception as error:  # Keep one broken Chrome profile from hiding the others.
             print(f"SKIP {profile.label}: {type(error).__name__}; profile processing failed")
 
+    if not healthy:
+        print("No verified sessions found; existing cookie exports were NOT changed.")
+        return 1
     exported = len(healthy) if args.dry_run else 0
     if not args.dry_run:
         output_names: set[str] = set()
@@ -103,7 +118,7 @@ def main() -> int:
             remove_stale_exports(args.output_dir, output_names)
 
     action = "validated" if args.dry_run else "exported"
-    print(f"{action} {exported} healthy session(s) from {len(profiles)} Chrome profile(s).")
+    print(f"{action} {exported} healthy session(s) from {len(eligible_profiles)} eligible Chrome profile(s).")
     return 0 if exported else 1
 
 

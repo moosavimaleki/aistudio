@@ -37,9 +37,12 @@ class ChromeProfile:
     root: Path
     directory: Path
     cookie_db: Path
+    name: str
 
     @property
     def label(self) -> str:
+        if self.name != self.directory.name:
+            return f"{self.root.name}/{self.name} ({self.directory.name})"
         return f"{self.root.name}/{self.directory.name}"
 
 
@@ -66,6 +69,7 @@ def discover_profiles(custom_roots: list[Path] | None = None) -> list[ChromeProf
     for browser, root in roots:
         if not root.is_dir():
             continue
+        profile_names = _profile_names(root)
         for directory in sorted(path for path in root.iterdir() if path.is_dir()):
             cookie_db = directory / "Network" / "Cookies"
             if not cookie_db.is_file():
@@ -74,8 +78,36 @@ def discover_profiles(custom_roots: list[Path] | None = None) -> list[ChromeProf
             if not cookie_db.is_file() or resolved in seen:
                 continue
             seen.add(resolved)
-            profiles.append(ChromeProfile(browser, root, directory, cookie_db))
+            profiles.append(
+                ChromeProfile(
+                    browser,
+                    root,
+                    directory,
+                    cookie_db,
+                    profile_names.get(directory.name, directory.name),
+                )
+            )
     return profiles
+
+
+def _profile_names(root: Path) -> dict[str, str]:
+    """Return Chrome's display names, falling back safely to directory names."""
+    try:
+        local_state = json.loads((root / "Local State").read_text(encoding="utf-8"))
+        info_cache = local_state.get("profile", {}).get("info_cache", {})
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return {}
+    if not isinstance(info_cache, dict):
+        return {}
+
+    names: dict[str, str] = {}
+    for directory, metadata in info_cache.items():
+        if not isinstance(directory, str) or not isinstance(metadata, dict):
+            continue
+        name = metadata.get("name")
+        if isinstance(name, str) and name:
+            names[directory] = name
+    return names
 
 
 def extract_chatgpt_cookies(profile: ChromeProfile) -> CookieJar:
@@ -110,6 +142,7 @@ def validate_session(cookies: CookieJar, proxy: str, timeout: float) -> tuple[bo
             ACCOUNT_CHECK_URL,
             headers
             | {
+                "Authorization": f"Bearer {access_token}",
                 "X-Openai-Target-Path": "/backend-api/accounts/check/v4-2023-04-27",
                 "X-Openai-Target-Route": "/backend-api/accounts/check/{version}",
             },
@@ -134,8 +167,9 @@ def validate_session(cookies: CookieJar, proxy: str, timeout: float) -> tuple[bo
         return False, f"account endpoint returned HTTP {error.code}"
     except (OSError, URLError, UnicodeError, json.JSONDecodeError) as error:
         return False, f"account check failed: {type(error).__name__}"
-    if not _is_authenticated_account(payload):
-        return False, "account response is anonymous or incomplete"
+    session_user = session.get("user") if isinstance(session, dict) else None
+    if not _is_authenticated_account(payload, session_user):
+        return False, "account identity does not match the authenticated session"
     return True, "active authenticated account"
 
 
@@ -176,19 +210,19 @@ def _access_token(payload: object) -> str | None:
     return token if isinstance(token, str) and token else None
 
 
-def _is_authenticated_account(payload: object) -> bool:
-    """Reject the smaller 200 JSON document returned by /backend-anon/me."""
-    if not isinstance(payload, dict):
+def _is_authenticated_account(payload: object, session_user: object) -> bool:
+    """Bind the authenticated /me result to /auth/session, not optional fields.
+
+    Current /me responses no longer include client_id or orgs. A populated
+    user-looking document alone is insufficient; both endpoints must agree.
+    """
+    if not isinstance(payload, dict) or not isinstance(session_user, dict):
         return False
-    if not all(isinstance(payload.get(key), str) and payload[key] for key in ("id", "email", "client_id")):
-        return False
-    organizations = payload.get("orgs")
-    if not isinstance(organizations, dict):
-        return False
-    data = organizations.get("data")
-    return isinstance(data, list) and any(
-        isinstance(organization, dict) and isinstance(organization.get("id"), str)
-        for organization in data
+    return all(
+        isinstance(payload.get(key), str) and bool(payload[key])
+        and isinstance(session_user.get(key), str)
+        and payload[key] == session_user[key]
+        for key in ("id", "email")
     )
 
 
