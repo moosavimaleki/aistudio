@@ -36,12 +36,13 @@ scripts/sync_sessions_to_server.sh \
     </section>
 
     <section class="panel samples-panel">
-      <div class="panel-head"><div><h2>نمونه‌های API</h2><p>برای دامنهٔ محافظت‌شده، هدر Authorization را با توکن خودت اضافه کن. برای اجرای محلی، مقدار <code>BASE_URL</code> را روی <code>http://127.0.0.1:3346</code> بگذار.</p></div></div>
+      <div class="panel-head"><div><h2>نمونه‌های API</h2><p>پیش از اجرای نمونه روی سرور، متغیر AISTUDIO_API_TOKEN را با توکن API همین سرویس تنظیم کن. توکن حساب ChatGPT نیست؛ برای لوکال نیاز نیست. برای اجرای محلی، مقدار <code>BASE_URL</code> را روی <code>http://127.0.0.1:3346</code> بگذار.</p></div></div>
       <div class="sample-groups">
         <article class="sample-group">
           <h3>تولید متن · GPT‑6</h3><p>مدل‌ها: <code>chatgpt/gpt-6</code>، <code>chatgpt/gpt-6-thinking-standard</code> و <code>chatgpt/gpt-6-thinking-extended</code></p>
           <div class="sample-card"><div class="sample-card-head"><strong>cURL · chat completions</strong><button type="button" data-copy-target="sample-curl-text">کپی</button></div><pre id="sample-curl-text" class="sample-code">BASE_URL="${OPENAI_BASE_URL:-http://127.0.0.1:3346}"
-curl -sS "$BASE_URL/v1/chat/completions" \
+curl -sS --fail-with-body "$BASE_URL/v1/chat/completions" \
+  -H "Authorization: Bearer ${AISTUDIO_API_TOKEN:-}" \
   -H 'Content-Type: application/json' \
   -d '{
     "model": "chatgpt/gpt-6-thinking-standard",
@@ -62,7 +63,8 @@ payload = {
 request = urllib.request.Request(
     f"{base_url}/v1/chat/completions",
     data=json.dumps(payload).encode(),
-    headers={"Content-Type": "application/json"},
+    headers={"Content-Type": "application/json",
+             "Authorization": "Bearer " + os.getenv("AISTUDIO_API_TOKEN", "")},
     method="POST",
 )
 with urllib.request.urlopen(request, timeout=240) as response:
@@ -73,7 +75,8 @@ print(result["choices"][0]["message"]["content"])</pre></div>
           <h3>تولید تصویر · نیازمند حالت مرورگر</h3>
           <div class="sample-card"><div class="sample-card-head"><strong>cURL · image generation</strong><button type="button" data-copy-target="sample-curl-image">کپی</button></div><pre id="sample-curl-image" class="sample-code">set -euo pipefail
 BASE_URL="${OPENAI_BASE_URL:-http://127.0.0.1:3346}"
-image_b64="$(curl -sS "$BASE_URL/v1/images/generations" \
+image_b64="$(curl -sS --fail-with-body "$BASE_URL/v1/images/generations" \
+  -H "Authorization: Bearer ${AISTUDIO_API_TOKEN:-}" \
   -H 'Content-Type: application/json' \
   -d '{"model":"chatgpt-web","prompt":"A minimal blue circle on white","n":1,"response_format":"b64_json"}' \
   | jq -er 'if .error then error(.error.message) else .data[0].b64_json end')"
@@ -88,7 +91,8 @@ payload = {"model": "chatgpt-web", "prompt": "A minimal blue circle on white", "
 request = urllib.request.Request(
     f"{base_url}/v1/images/generations",
     data=json.dumps(payload).encode(),
-    headers={"Content-Type": "application/json"},
+    headers={"Content-Type": "application/json",
+             "Authorization": "Bearer " + os.getenv("AISTUDIO_API_TOKEN", "")},
     method="POST",
 )
 with urllib.request.urlopen(request, timeout=420) as response:
@@ -100,7 +104,8 @@ with open("generated.png", "wb") as output:
           <h3>تصویر با عکس مرجع · نیازمند حالت مرورگر</h3>
           <div class="sample-card"><div class="sample-card-head"><strong>cURL · multipart upload</strong><button type="button" data-copy-target="sample-curl-reference">کپی</button></div><pre id="sample-curl-reference" class="sample-code">set -euo pipefail
 BASE_URL="${OPENAI_BASE_URL:-http://127.0.0.1:3346}"
-image_b64="$(curl -sS "$BASE_URL/v1/images/generations" \
+image_b64="$(curl -sS --fail-with-body "$BASE_URL/v1/images/generations" \
+  -H "Authorization: Bearer ${AISTUDIO_API_TOKEN:-}" \
   -F model=chatgpt-web \
   -F 'prompt=این تصاویر را به یک پوستر تبلیغاتی تبدیل کن' \
   -F image=@screen-1.png \
@@ -108,7 +113,7 @@ image_b64="$(curl -sS "$BASE_URL/v1/images/generations" \
   | jq -er 'if .error then error(.error.message) else .data[0].b64_json end')"
 printf '%s' "$image_b64" | base64 -d &gt; poster.png</pre></div>
           <div class="sample-card"><div class="sample-card-head"><strong>Python · آمادهٔ repository</strong><button type="button" data-copy-target="sample-python-reference">کپی</button></div><pre id="sample-python-reference" class="sample-code">cd /home/h-mousavi/Projects/Hamed/aistudio-api
-OPENAI_BASE_URL=https://aistudio.shekarchi-app.ir \
+OPENAI_BASE_URL=https://aistudio.s123.shekarchi-app.ir \
 python examples/chatgpt_image_with_references.py \
   --prompt 'این تصاویر را به یک پوستر تبلیغاتی تبدیل کن' \
   --output poster.png screen-1.png screen-2.png</pre></div>
