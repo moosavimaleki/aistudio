@@ -33,12 +33,10 @@
       const direct = job.kind === protocol.chatDirectJobKind;
       if (!tab?.id) {
         tab = await chromeApi.tabs.create({ url: startURL, active: false });
-      } else if (direct) {
-        await chromeApi.tabs.reload(tab.id);
-      } else {
+      } else if (!isChatPage(tab.url, startURL)) {
         tab = await chromeApi.tabs.update(tab.id, { url: startURL, active: false });
       }
-      await waitForChatPage(tab.id, startURL, direct);
+      await waitForChatPage(tab.id, startURL, direct ? 90_000 : 45_000);
       const result = await sendWhenReady(tab.id, {
         type: protocol.chatJobMessage,
         jobId: job.id,
@@ -49,8 +47,9 @@
           prompt: job.prompt,
           submitNonce: job.submitNonce,
           expectImage: job.kind === protocol.chatImageJobKind,
+          attachments: job.attachments,
         }),
-      });
+      }, direct ? 140_000 : 300_000);
       if (result?.error) throw new Error(result.error);
       if (job.kind === protocol.chatDirectJobKind) {
         if (!result?.headers || typeof result.headers !== "object") {
@@ -73,27 +72,36 @@
       return tabs.find((candidate) => candidate.active) || tabs[0];
     }
 
-    async function sendWhenReady(tabId, message) {
+    async function sendWhenReady(tabId, message, responseTimeoutMs) {
       const deadline = Date.now() + 45_000;
       let lastError;
       while (Date.now() < deadline) {
+        let timeoutID;
         try {
-          return await chromeApi.tabs.sendMessage(tabId, message);
+          return await Promise.race([
+            chromeApi.tabs.sendMessage(tabId, message),
+            new Promise((_resolve, reject) => {
+              timeoutID = setTimeout(() => reject(new Error("ChatGPT page did not respond to the job")), responseTimeoutMs);
+            }),
+          ]);
         } catch (error) {
           lastError = error;
+          if (error?.message === "ChatGPT page did not respond to the job") throw error;
           await new Promise((resolve) => setTimeout(resolve, 250));
+        } finally {
+          clearTimeout(timeoutID);
         }
       }
       throw lastError || new Error("ChatGPT tab did not become ready");
     }
 
-    async function waitForChatPage(tabId, startURL, anyPath = false, timeoutMs = 45_000) {
+    async function waitForChatPage(tabId, startURL, timeoutMs = 45_000) {
       const deadline = Date.now() + timeoutMs;
       let lastError;
       while (Date.now() < deadline) {
         try {
           const tab = await chromeApi.tabs.get(tabId);
-          if (tab.status !== "complete" || !isChatPage(tab.url, startURL, anyPath)) {
+          if (!isChatPage(tab.url, startURL)) {
             await new Promise((resolve) => setTimeout(resolve, 250));
             continue;
           }
@@ -107,11 +115,12 @@
       throw lastError || new Error("ChatGPT tab did not finish loading");
     }
 
-    function isChatPage(rawURL, startURL, anyPath) {
+    function isChatPage(rawURL, startURL) {
       try {
         const current = new URL(rawURL);
         const start = new URL(startURL);
-        return current.origin === start.origin && (anyPath || current.pathname === start.pathname);
+        return current.origin === start.origin &&
+          (current.pathname === start.pathname || current.pathname.startsWith("/c/"));
       } catch (_error) {
         return false;
       }

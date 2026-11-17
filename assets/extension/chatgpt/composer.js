@@ -1,9 +1,11 @@
 "use strict";
 
 (() => {
-  async function prepare(prompt, submitNonce, timeoutMs = 45_000) {
+  const composerSelector = "#prompt-textarea, [data-composer-markdown][contenteditable=true]";
+
+  async function prepare(prompt, submitNonce, timeoutMs = 45_000, attachments = []) {
     await ready();
-    const composer = await waitFor(() => document.querySelector("#prompt-textarea"), timeoutMs);
+    const composer = await waitFor(findComposer, timeoutMs);
     composer.focus();
     selectContents(composer);
     document.execCommand("delete", false);
@@ -11,22 +13,59 @@
       composer.textContent = prompt;
     }
     composer.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: prompt }));
+    if (attachments?.length) {
+      await waitFor(findSubmitButton, timeoutMs, "ChatGPT composer did not accept the image prompt");
+      await delay(250);
+      await globalThis.ChatGPTAttachments.attach(attachments, timeoutMs);
+    }
     composer.dataset.aistudioSubmitNonce = submitNonce;
+    document.documentElement.dataset.aistudioSubmitNonce = submitNonce;
   }
 
   async function submitProbe(submitNonce, timeoutMs = 45_000) {
     await prepare(".", submitNonce, timeoutMs);
-    const button = await waitFor(() => {
-      const candidate = document.querySelector('[data-testid="send-button"]');
-      return candidate && !candidate.disabled ? candidate : null;
-    }, timeoutMs, "ChatGPT probe submit button did not become ready");
-    button.click();
+  }
+
+  async function resetAfterProbe(probeConversationId, timeoutMs = 30_000) {
+    // React can retain a local conversation URL or deliver captured artifacts
+    // before its route settles. Cleanup depends on an empty composer, not on
+    // a fabricated probe ID becoming the final URL.
+    const clean = () => location.pathname === "/" && findComposer() &&
+      !(findComposer().textContent || "").trim() &&
+      document.querySelectorAll('[data-message-author-role="user"]').length === 0;
+    if (clean()) return;
+    const newChat = await waitFor(() => [...document.querySelectorAll("button, a")].find(
+      (button) => isVisible(button) && (button.getAttribute("aria-label") === "New chat" ||
+        button.getAttribute("data-testid") === "create-new-chat-button" ||
+        (button.getAttribute("href") === "/" && /new chat/i.test(button.textContent || ""))),
+    ), timeoutMs, "ChatGPT New chat button is unavailable after the probe");
+    if (!newChat) throw new Error("ChatGPT New chat button is unavailable after the probe");
+    newChat.click();
+    await waitFor(clean, timeoutMs,
+      "ChatGPT did not return to a clean chat after the probe");
+  }
+
+  function findComposer() {
+    return [...document.querySelectorAll(composerSelector)].find(isVisible) || null;
+  }
+
+  function isVisible(element) {
+    return typeof element.getClientRects !== "function" || element.getClientRects().length > 0;
+  }
+
+  function findSubmitButton() {
+    return [...document.querySelectorAll("button")].find((candidate) => {
+      if (candidate.disabled || !isVisible(candidate)) return false;
+      const testID = candidate.getAttribute("data-testid") || "";
+      const label = (candidate.getAttribute("aria-label") || "").trim().toLowerCase();
+      return testID === "send-button" || label === "send" || label.startsWith("send ");
+    }) || null;
   }
 
   async function ready() {
     await acceptCookieConsent();
     await dismissBlockingDialog();
-    return Boolean(document.querySelector("#prompt-textarea"));
+    return Boolean(findComposer());
   }
 
   async function dismissBlockingDialog() {
@@ -58,12 +97,23 @@
     return new Set([...document.images].map((image) => image.currentSrc).filter(Boolean));
   }
 
-  async function readGeneratedImages(previousSources, timeoutMs = 90_000) {
+  function imageRateLimits() {
+    return new Set(document.querySelectorAll('[data-testid="image-gen-rate-limit-tombstone"]'));
+  }
+
+  function imageRateLimitReached(previousRateLimits) {
+    return [...imageRateLimits()].some((card) => !previousRateLimits.has(card));
+  }
+
+  async function readGeneratedImages(previousSources, previousRateLimits = new Set(), timeoutMs = 240_000) {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
       const source = [...document.images]
         .find((image) => isGeneratedImage(image, previousSources))?.currentSrc;
       if (source) return [await readImage(source)];
+      if (imageRateLimitReached(previousRateLimits)) {
+        throw new Error("ChatGPT image generation limit reached for this account");
+      }
       await delay(250);
     }
     return [];
@@ -146,7 +196,7 @@
 
   const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
-  const api = { ready, prepare, submitProbe, assistantCount, imageSources, isGeneratedImage, readGeneratedImages, readLastAssistant };
+  const api = { ready, prepare, submitProbe, resetAfterProbe, assistantCount, imageSources, imageRateLimits, imageRateLimitReached, isGeneratedImage, readGeneratedImages, readLastAssistant };
   globalThis.ChatGPTComposer = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })();

@@ -12,6 +12,7 @@
     const job = {
       id: event.data.jobId,
       direct: event.data.direct === true,
+      expectImage: event.data.expectImage === true,
     };
     waitingJob = job;
     window.postMessage({
@@ -26,21 +27,32 @@
     if (job?.direct && path === "/backend-api/f/conversation/prepare") {
       return capturePrepare(args, job);
     }
+    if (job?.direct && isConversationPath(path) && !(await isProbeRequest(args))) {
+      return Reflect.apply(nativeFetch, this, args);
+    }
     try {
       if (job?.direct && isConversationPath(path)) {
         waitingJob = null;
         try {
-          post(job.id, await directTransport(args, path, job));
+          const probeConversationId = crypto.randomUUID();
+          post(job.id, { ...await directTransport(args, path, job), probeConversationId });
+          return delegatedResponse(probeConversationId);
         } catch (error) {
           post(job.id, { error: message(error) });
         }
-        return delegatedResponse();
+        return new Response(null, { status: 502 });
       }
       const response = await Reflect.apply(nativeFetch, this, args);
       if (isConversationPath(path) && waitingJob) {
-        const jobId = waitingJob.id;
+        const job = waitingJob;
         waitingJob = null;
-        observe(response.clone(), jobId, path);
+        if (job.expectImage) {
+          post(job.id, response.ok
+            ? { upstreamStatus: response.status, upstreamPath: path }
+            : { error: `ChatGPT UI request returned HTTP ${response.status}`, upstreamStatus: response.status, upstreamPath: path });
+        } else {
+          observe(response.clone(), job.id, path);
+        }
       }
       return response;
     } catch (error) {
@@ -65,6 +77,17 @@
     return path === "/backend-api/f/conversation" || path === "/backend-anon/f/conversation";
   }
 
+  async function isProbeRequest(args) {
+    try {
+      const request = new Request(args[0], args[1]);
+      const payload = await request.json();
+      const last = payload.messages?.at(-1);
+      return last?.author?.role === "user" && last?.content?.parts?.[0] === ".";
+    } catch (_error) {
+      return false;
+    }
+  }
+
   async function capturePrepare(args, job) {
     const request = new Request(args[0], args[1]);
     job.prepareHeaders = Object.fromEntries(request.headers.entries());
@@ -87,12 +110,12 @@
     };
   }
 
-  function delegatedResponse() {
+  function delegatedResponse(probeConversationId) {
     const initial = {
       p: "",
       o: "add",
       v: {
-        conversation_id: crypto.randomUUID(),
+        conversation_id: probeConversationId,
         message: {
           id: crypto.randomUUID(),
           author: { role: "assistant" },

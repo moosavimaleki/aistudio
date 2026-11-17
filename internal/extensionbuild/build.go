@@ -38,6 +38,7 @@ var bundles = map[string][]string{
 		"content/keep-alive.js",
 		"chatgpt/channel.js",
 		"chatgpt/composer.js",
+		"chatgpt/attachments.js",
 		"chatgpt/content.js",
 	},
 }

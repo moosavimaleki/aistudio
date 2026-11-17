@@ -13,7 +13,11 @@
       return true;
     }
     if (message?.type !== protocol.chatJobMessage) return false;
-    run(message).then(sendResponse);
+    document.documentElement.dataset.aistudioJobStage = `received:${message.jobId}`;
+    run(message).then((result) => {
+      document.documentElement.dataset.aistudioJobStage = `finished:${message.jobId}`;
+      sendResponse(result);
+    });
     return true;
   });
 
@@ -24,22 +28,26 @@
     }
     const previousAssistantCount = globalThis.ChatGPTComposer.assistantCount();
     const previousImages = globalThis.ChatGPTComposer.imageSources();
+    const previousRateLimits = job.expectImage ? globalThis.ChatGPTComposer.imageRateLimits() : new Set();
     const capture = channel.capture(job.jobId, {
       direct,
+      expectImage: job.expectImage === true,
     });
     try {
       await capture.ready;
+      document.documentElement.dataset.aistudioJobStage = `armed:${job.jobId}`;
       if (direct) {
         await globalThis.ChatGPTComposer.submitProbe(job.submitNonce || job.jobId);
-        const result = await capture.result;
-        setTimeout(() => location.reload(), 500);
-        return result;
+        document.documentElement.dataset.aistudioJobStage = `prepared:${job.jobId}`;
+        // Reuse the mounted page/composer. The next probe replaces its input;
+        // Go owns the actual conversation and does not need a fresh UI chat.
+        return await capture.result;
       }
-      await globalThis.ChatGPTComposer.prepare(job.prompt, job.submitNonce || job.jobId);
+		await globalThis.ChatGPTComposer.prepare(job.prompt, job.submitNonce || job.jobId, 45_000, job.attachments);
       const result = await capture.result;
       if (result.error) return result;
       if (job.expectImage) {
-        const images = await globalThis.ChatGPTComposer.readGeneratedImages(previousImages);
+        const images = await globalThis.ChatGPTComposer.readGeneratedImages(previousImages, previousRateLimits);
         if (!images.length) return { error: "ChatGPT page returned no generated image" };
         return { ...result, images };
       }

@@ -28,7 +28,7 @@ test("page client forwards one job to the active AI Studio tab", async () => {
   assert.equal(result.token, "fresh");
 });
 
-test("page client reloads ChatGPT and forwards only prompt data", async () => {
+test("page client opens ChatGPT and forwards only prompt data", async () => {
   const sent = [];
   const chromeApi = {
     tabs: {
@@ -70,21 +70,23 @@ test("page client marks a ChatGPT image job without adding protected request dat
   };
   const client = createPageClient(chromeApi, protocol, "https://aistudio.google.com/*", "https://chatgpt.com/*");
 
-  const result = await client.execute({ id: "image-1", kind: protocol.chatImageJobKind, prompt: "draw", submitNonce: "submit-2" });
+  const attachments = [{ name: "reference.png", mimeType: "image/png", data: "aW1hZ2U=" }];
+  const result = await client.execute({ id: "image-1", kind: protocol.chatImageJobKind, prompt: "draw", submitNonce: "submit-2", attachments });
 
   assert.equal(sent[0].message.expectImage, true);
+  assert.deepEqual(sent[0].message.attachments, attachments);
   assert.equal(Object.hasOwn(sent[0].message, "headers"), false);
   assert.equal(result.images[0].mimeType, "image/png");
 });
 
-test("page client requests browser artifacts for a direct Go turn", async () => {
+test("page client reuses a ready ChatGPT page for direct Go turns", async () => {
   const sent = [];
-  let reloadCalls = 0;
+  const navigated = [];
   const chromeApi = {
     tabs: {
-      query: async () => [{ id: 50, active: true }],
-      reload: async () => { reloadCalls++; },
-      get: async () => ({ id: 50, status: "complete", url: "https://chatgpt.com/c/existing" }),
+      query: async () => [{ id: 50, active: true, url: "https://chatgpt.com/" }],
+      update: async (id, options) => { navigated.push({ id, options }); },
+      get: async () => ({ id: 50, status: "loading", url: "https://chatgpt.com/" }),
       sendMessage: async (tabId, message) => {
         if (message.type === protocol.chatReadyMessage) return { ready: true };
         sent.push({ tabId, message });
@@ -108,9 +110,28 @@ test("page client requests browser artifacts for a direct Go turn", async () => 
   });
 
   assert.equal(sent[0].message.direct, true);
+  assert.deepEqual(navigated, []);
   assert.equal(Object.hasOwn(sent[0].message, "prompt"), false);
   assert.equal(Object.hasOwn(sent[0].message, "model"), false);
   assert.equal(Object.hasOwn(sent[0].message, "conversationId"), false);
   assert.equal(Object.hasOwn(sent[0].message, "parentMessageId"), false);
-  assert.equal(reloadCalls, 1);
+});
+
+test("page client keeps an existing ChatGPT conversation tab", async () => {
+  let navigated = false;
+  const chromeApi = {
+    tabs: {
+      query: async () => [{ id: 51, active: true, url: "https://chatgpt.com/c/existing" }],
+      update: async () => { navigated = true; },
+      get: async () => ({ id: 51, url: "https://chatgpt.com/c/existing" }),
+      sendMessage: async (_id, message) => message.type === protocol.chatReadyMessage
+        ? { ready: true }
+        : { headers: { "openai-sentinel-proof-token": "opaque" } },
+    },
+  };
+  const client = createPageClient(chromeApi, protocol, "https://aistudio.google.com/*", "https://chatgpt.com/*");
+
+  await client.execute({ id: "direct-2", kind: protocol.chatDirectJobKind });
+
+  assert.equal(navigated, false);
 });
