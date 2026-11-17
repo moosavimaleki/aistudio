@@ -42,12 +42,13 @@ func (s *Store) Timing(ctx context.Context, name string, elapsed float64, labels
 	s.write(ctx, func(pipe redis.Pipeliner, key string) {
 		pipe.HIncrByFloat(ctx, key, Field(name+".count", labels), 1)
 		pipe.HIncrByFloat(ctx, key, Field(name+".sum_ms", labels), elapsed)
+		pipe.HIncrByFloat(ctx, key, Field(name+".histogram.count", labels), 1)
 		for _, boundary := range LatencyBucketsMS() {
 			if elapsed <= boundary {
-				pipe.HIncrByFloat(ctx, key, Field(BucketMetric(name, boundary), labels), 1)
+				pipe.HIncrByFloat(ctx, key, Field(BucketMetric(name+".histogram", boundary), labels), 1)
 			}
 		}
-		pipe.HIncrByFloat(ctx, key, Field(name+".le_inf", labels), 1)
+		pipe.HIncrByFloat(ctx, key, Field(name+".histogram.le_inf", labels), 1)
 	})
 }
 func (s *Store) Gauge(ctx context.Context, name string, value any, labels map[string]any) {

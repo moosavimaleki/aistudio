@@ -6,7 +6,7 @@ const escapeHtml = value => String(value ?? "—")
   .replaceAll("&", "&amp;").replaceAll("<", "&lt;")
   .replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 const number = value => new Intl.NumberFormat("fa-IR").format(Number(value || 0));
-const duration = ms => !ms ? "—" : ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`;
+const duration = ms => ms < 0 ? `> ${(-ms / 1000).toFixed(1)}s` : !ms ? "—" : ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`;
 const dateTime = value => value ? new Date(value).toLocaleString("fa-IR") : "—";
 const ago = value => {
   if (!value) return "—";
@@ -173,7 +173,7 @@ function renderLatencies(buckets) {
   const values = {};
   for (const bucket of buckets) {
     const upper = bucket.upperMs;
-    const label = upper == null ? `> ${previous / 1000}s` : previous === 0 ? `≤ ${upper / 1000}s` : `${previous / 1000}–${upper / 1000}s`;
+    const label = bucket.label || (upper == null ? `> ${previous / 1000}s` : previous === 0 ? `≤ ${upper / 1000}s` : `${previous / 1000}–${upper / 1000}s`);
     values[label] = bucket.count;
     if (upper != null) previous = upper;
   }

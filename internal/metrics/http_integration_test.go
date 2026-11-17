@@ -42,7 +42,7 @@ func TestHTTPPersistsMetricsAfterRequestCancellation(t *testing.T) {
 	}
 	store.Timing(context.Background(), "fixture", 1500, nil)
 	window = store.Read(context.Background(), 1)
-	if Matching(window.Aggregate, BucketMetric("fixture", 1000), nil) != 0 || Matching(window.Aggregate, BucketMetric("fixture", 2500), nil) != 1 {
+	if Matching(window.Aggregate, BucketMetric("fixture.histogram", 1000), nil) != 0 || Matching(window.Aggregate, BucketMetric("fixture.histogram", 2500), nil) != 1 {
 		t.Fatal("histogram boundaries were not persisted correctly")
 	}
 }
