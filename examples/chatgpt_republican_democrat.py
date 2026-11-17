@@ -17,7 +17,7 @@ from dataclasses import dataclass
 
 
 BASE_URL = os.getenv("OPENAI_BASE_URL", "http://127.0.0.1:3346").rstrip("/")
-MODEL = os.getenv("CHATGPT_MODEL", "chatgpt/gpt-5.6-pro")
+MODEL = os.getenv("CHATGPT_MODEL", "chatgpt/gpt-5.6-thinking-extended")
 TIMEOUT = float(os.getenv("OPENAI_TIMEOUT", "240"))
 DELAY_SECONDS = float(os.getenv("CHATGPT_DUAL_DELAY_SECONDS", "2"))
 TURN_LIMIT = int(os.getenv("CHATGPT_DUAL_TURN_LIMIT", "0"))

@@ -1,0 +1,41 @@
+[
+  {
+    "id": "axis",
+    "title": "Why a perfectly sharp dialogue scene can still feel wrong",
+    "target_words": 650,
+    "brief": "Teach beginner directors screen direction through a two-person dialogue scene. Start with a concrete confusing cut and build toward a practical repair. The viewer should leave able to plan a simple shot list.",
+    "research": [
+      "The action axis is the imaginary line connecting the two actors. Keeping camera setups on one side generally preserves their relative screen directions.",
+      "Crossing the axis can reverse apparent screen positions. It is not forbidden: deliberate staging, a continuous camera move or a new establishing shot can help reorient viewers.",
+      "Eyeline height and direction, matched action and consistent hand/prop use also affect continuity; the axis rule alone does not solve all continuity errors.",
+      "Flipping a shot horizontally may reverse text, props and lighting; it is not a universal repair.",
+      "Use an invented example with two actors, one table, two cups and a camera. Do not claim the narrator actually filmed or tested it."
+    ]
+  },
+  {
+    "id": "one-light",
+    "title": "One LED, two moods, no magical lighting fixes",
+    "target_words": 650,
+    "brief": "Explain how a beginner can use one LED and a white board for an intimate dialogue scene, then alter the mood without buying more equipment. Deliver a concrete setup and acknowledge its limits.",
+    "research": [
+      "The available setup is a room at night, two seated actors, one dimmable LED and a white bounce board. No other powered lights or changing daylight are available.",
+      "A bounce board redirects existing light; it is not an independent light source. Its position and distance affect how much fill reaches the shadow side.",
+      "Apparent source size relative to the subject affects shadow softness. Diffusion or bouncing may soften light but reduces available intensity.",
+      "Exposure, subject-to-background distance and light placement interact. More dramatic contrast can make matching two actors across reverse angles harder.",
+      "Propose a baseline and one deliberate variation. Treat visual outcomes as proposals to check on location, not as measured results."
+    ]
+  },
+  {
+    "id": "sound",
+    "title": "Make a quiet scene tense without a music cue",
+    "target_words": 650,
+    "brief": "Create a practical educational video about directing tension through sound in a mother/daughter letter scene. Show how sound changes attention without turning every silence into a cliché.",
+    "research": [
+      "The fictional scene has a mother, her adult daughter, an unopened letter, a kitchen and a hallway. No music may be added.",
+      "Diegetic sound belongs to the story world, such as a fridge motor, a chair scrape or footsteps. Off-screen sound can imply action outside the frame.",
+      "Room tone helps bridge edits. Removing all background sound abruptly may sound like an editing error unless the change has a clear expressive purpose.",
+      "Sound bridges can connect shots or anticipate a change in attention. Matching perspective matters: distant footsteps should not automatically sound like close microphone recordings.",
+      "Give a short three-beat example and a practical recording checklist. Do not invent audience retention percentages or pretend this fictional scene is a documented production."
+    ]
+  }
+]

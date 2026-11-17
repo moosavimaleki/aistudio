@@ -23,10 +23,45 @@ python examples/chatgpt_openai.py
 python examples/chatgpt_automatic_conversation.py
 python examples/chatgpt_200_questions.py
 python examples/chatgpt_image.py
+python examples/chatgpt_image_with_references.py \
+  --prompt 'از این سه تصویر یک پوستر تبلیغاتی فارسی بساز' \
+  --output poster.png screen-1.png screen-2.png screen-3.png
+```
+
+همین کار با API سازگار با OpenAI (خروجی فعلاً فقط `b64_json` و `n=1`):
+
+```bash
+curl -sS http://127.0.0.1:3346/v1/images/generations \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"chatgpt-web","prompt":"A blue circle on a white background","n":1,"response_format":"b64_json"}' \
+  | jq -r '.data[0].b64_json' | base64 -d > /tmp/chatgpt-image.png
+```
+
+برای استفاده از عکس‌های مرجع، همین endpoint بدنهٔ `multipart/form-data` با فیلد تکراری `image` را هم می‌پذیرد؛ حداکثر چهار فایل PNG/JPEG/WebP، هرکدام تا ۸ MiB. عکس‌ها با آپلود معمولی در UI مرورگر به ChatGPT فرستاده می‌شوند و پس از کامل‌شدن آپلود، پیام ارسال می‌شود:
+
+اسکریپت آمادهٔ پایتون هم همین کار را انجام می‌دهد و فقط از کتابخانهٔ استاندارد Python استفاده می‌کند:
+
+```bash
+python examples/chatgpt_image_with_references.py \
+  --prompt 'این تصاویر را به یک پوستر تبلیغاتی فارسی تبدیل کن' \
+  --output poster.png \
+  /path/to/screen-1.png /path/to/screen-2.png /path/to/screen-3.png
+```
+
+برای انتخاب profile مشخص می‌توان `--browser-id chatgpt2` یا متغیر `CHATGPT_BROWSER_ID` را داد.
+
+```bash
+curl -sS http://127.0.0.1:3346/v1/images/generations \
+  -F model=chatgpt-web \
+  -F 'prompt=از این سه تصویر یک پوستر تبلیغاتی فارسی بساز' \
+  -F image=@screen-1.png \
+  -F image=@screen-2.png \
+  -F image=@screen-3.png \
+  | jq -r '.data[0].b64_json' | base64 -d > poster.png
 ```
 
 `chatgpt_openai.py` دو turn متوالی OpenAI-compatible را اجرا می‌کند. حالت
-پیش‌فرض `chatgpt/gpt-5.6-pro` است: درخواست نهایی را Go می‌فرستد و Chrome فقط
+پیش‌فرض `chatgpt/gpt-5.6-thinking-extended` است: درخواست نهایی را Go می‌فرستد و Chrome فقط
 artifactهای محافظت‌شدهٔ تازه را آماده می‌کند. مثال در هر turn کل آرایهٔ استاندارد
 `messages` را می‌فرستد؛ gateway conversation و parent درست را در Redis پیدا
 می‌کند و فقط turn جدید را به ChatGPT می‌فرستد. فرستادن دستی `conversation_id`
@@ -67,6 +102,18 @@ CHATGPT_IMAGE_PROMPT='A small watercolor fox reading a book' \
 CHATGPT_IMAGE_OUTPUT=/tmp/fox.png \
 python examples/chatgpt_image.py
 ```
+
+## ساخت ویدیو در AI Studio
+
+مثال [aistudio_video.py](aistudio_video.py) از endpoint اختصاصی
+`POST /v1/videos/generations` برای تولید ویدیو و دانلود MP4 استفاده می‌کند:
+
+```bash
+python examples/aistudio_video.py --output elephant.mp4
+```
+
+مدل این مسیر `gemini-omni-1.1-flash` است. جزئیات curl، انتخاب پروفایل، دریافت
+base64 و محدودیت‌ها در [راهنمای ویدیو](../docs/aistudio-video.fa.md) آمده‌اند.
 
 ## SDK رسمی `google-genai`
 
@@ -135,3 +182,17 @@ python examples/reuse_uploaded_file.py
   همراه history حفظ کند؛ signature ساختگی معتبر نیست.
 - `fileData.fileId` فقط در همان application folder/profile معتبری که فایل در آن ایجاد شده استفاده شود.
 - مدل در URL به‌صورت `gemini-…` نوشته می‌شود؛ service آن را به `models/gemini-…` تبدیل می‌کند.
+
+## ارزیابی نگارش یوتیوب
+
+مثال [youtube_benchmark.py](youtube_benchmark.py) یک ارزیابی مستقل با تمرکز بر
+YouTube Best Practices است؛ بازتولید رسمی ToneBench نیست.
+
+```bash
+python3 examples/youtube_benchmark.py \
+  --model gemini-4-argon --case axis --drafts 1 \
+  --output artifacts/youtube/argon-smoke
+```
+
+برای داوری اختیاری با مدل دیگر، چند draft، زبان فارسی و ادامهٔ اجرای ناقص،
+[راهنمای آزمون](../docs/youtube-benchmark.fa.md) را ببینید.

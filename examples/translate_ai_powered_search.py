@@ -23,7 +23,7 @@ from pathlib import Path
 SOURCE_DIRECTORY = Path("/home/h-mousavi/Projects/Hamed/books/books/ai-powered-search-v9/en")
 TARGET_DIRECTORY = Path("/home/h-mousavi/Projects/Hamed/books/books/ai-powered-search-v9/fa")
 DEFAULT_BASE_URL = "http://127.0.0.1:3346"
-DEFAULT_MODEL = "chatgpt/gpt-5.6-pro"
+DEFAULT_MODEL = "chatgpt/gpt-5.6-thinking-extended"
 STATE_FILENAME = ".translation-session.json"
 COMPLETE_PREFIX = "<!-- ai-powered-search-translation: complete sha256="
 

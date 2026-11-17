@@ -7,7 +7,7 @@ import urllib.request
 
 
 base_url = os.getenv("OPENAI_BASE_URL", "http://127.0.0.1:3346").rstrip("/")
-model = os.getenv("CHATGPT_MODEL", "chatgpt/gpt-5.6-pro")
+model = os.getenv("CHATGPT_MODEL", "chatgpt/gpt-5.6-thinking-extended")
 browser_id = os.getenv("CHATGPT_BROWSER_ID", "")
 timeout = float(os.getenv("OPENAI_TIMEOUT", "240"))
 
