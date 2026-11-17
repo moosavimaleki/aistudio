@@ -37,7 +37,13 @@ func TestBrokerReportsFirstDispatch(t *testing.T) {
 		t.Fatal("dispatch notification was not delivered")
 	}
 
+	broker.mu.Lock()
+	broker.heartbeats["chatgpt"] = time.Now().Add(-time.Minute)
+	broker.mu.Unlock()
 	broker.Complete(job.ID, "chatgpt", map[string]any{"ok": true})
+	if !broker.connected("chatgpt") {
+		t.Fatal("job completion must prove browser liveness")
+	}
 	if err := <-done; err != nil {
 		t.Fatal(err)
 	}

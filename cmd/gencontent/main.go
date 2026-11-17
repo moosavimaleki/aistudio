@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"github.com/hamed/aistudio-api/internal/aistudio"
 	"github.com/hamed/aistudio-api/internal/gencontent"
 	"github.com/hamed/aistudio-api/internal/metrics"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -42,7 +44,12 @@ func main() {
 	handler := metrics.HTTP(metricStore, func(path string) bool {
 		return path == "/" || path == "/health" || strings.HasPrefix(path, "/dashboard")
 	}, serverHandler)
-	server := &http.Server{Addr: ":" + port, Handler: handler, ReadHeaderTimeout: 10 * time.Second}
+	requestContext, cancelRequests := context.WithCancel(context.Background())
+	defer cancelRequests()
+	server := &http.Server{
+		Addr: ":" + port, Handler: handler, ReadHeaderTimeout: 10 * time.Second,
+		BaseContext: func(net.Listener) context.Context { return requestContext },
+	}
 	go func() {
 		log.Printf("gencontent listening on %s", port)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -52,6 +59,14 @@ func main() {
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
 	<-signals
+	// Cancel upstream requests first so their deferred conversation leases are
+	// released before Docker terminates this process during session sync.
+	cancelRequests()
+	shutdownContext, cancelShutdown := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelShutdown()
+	if err := server.Shutdown(shutdownContext); err != nil {
+		log.Printf("gencontent shutdown: %v", err)
+	}
 }
 func intValue(name string, fallback int) int {
 	if value, err := strconv.Atoi(os.Getenv(name)); err == nil && value > 0 {

@@ -8,6 +8,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/hamed/aistudio-api/internal/metrics"
 )
 
 type HTTPClient struct{ client *http.Client }
@@ -42,7 +44,14 @@ func (h *HTTPClient) Request(ctx context.Context, method, endpoint string, heade
 	for name, value := range headers {
 		req.Header.Set(name, value)
 	}
-	return h.client.Do(req)
+	if localHost(req.URL.Hostname()) {
+		req.Header.Set("X-Lab-Request-ID", metrics.RequestID(ctx))
+	}
+	response, err := h.client.Do(req)
+	if err == nil && localHost(req.URL.Hostname()) {
+		metrics.ImportPhases(ctx, "factory_", response.Header.Get("X-Lab-Timings"))
+	}
+	return response, err
 }
 
 func (h *HTTPClient) RequestRetry(

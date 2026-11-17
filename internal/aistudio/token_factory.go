@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+
+	"github.com/hamed/aistudio-api/internal/metrics"
 )
 
 type TokenSnapshot struct {
@@ -21,6 +23,7 @@ type StagingTokenFactory struct {
 }
 
 func (f *StagingTokenFactory) Snapshot(ctx context.Context, digest string, generateRequest map[string]any) (TokenSnapshot, error) {
+	defer metrics.Phase(ctx, "gemini_token_factory")()
 	if !regexpDigest(digest) {
 		return TokenSnapshot{}, fmt.Errorf("content digest must be lowercase SHA-256 hex")
 	}

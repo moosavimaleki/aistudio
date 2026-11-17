@@ -5,11 +5,17 @@ import "fmt"
 func (f *Fleet) resolveAutomaticChatGPT() (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.config.ChatGPTRotateEvery > 0 {
+		return f.rotatingChatGPT()
+	}
 
 	if id, ok := f.nextReadyChatGPT(true); ok {
 		return id, nil
 	}
 	if id, ok := f.nextReadyChatGPT(false); ok {
+		return id, nil
+	}
+	if id, ok := f.dormantChatGPT(); ok {
 		return id, nil
 	}
 	if f.config.ChatGPTDefaultID == "" {

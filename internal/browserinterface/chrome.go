@@ -8,13 +8,13 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/chromedp/cdproto/fetch"
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
-	"github.com/chromedp/chromedp/kb"
 	"github.com/hamed/aistudio-api/internal/aistudio"
 	"github.com/hamed/aistudio-api/internal/chromeprocess"
 )
@@ -39,6 +39,7 @@ type ChromeSession struct {
 	cookies       []aistudio.CookieRecord
 	headers       map[string]string
 	providerReady bool
+	started       atomic.Bool
 	chatRequests  sync.Map
 }
 
@@ -81,7 +82,14 @@ func (s *ChromeSession) Start() error {
 			}
 		}
 	})
-	return chromedp.Run(s.ctx, network.Enable())
+	if err := chromedp.Run(s.ctx, network.Enable()); err != nil {
+		return err
+	}
+	if err := closeStartupTabs(s.ctx); err != nil {
+		return err
+	}
+	s.started.Store(true)
+	return nil
 }
 
 func chatConversationPath(rawURL string) string {
@@ -149,8 +157,12 @@ func (s *ChromeSession) Prepare(cookies, authUser string) (map[string]any, error
 	); err != nil {
 		return nil, err
 	}
-	if strings.Contains(s.currentURL(), "accounts.google.com") {
+	currentURL := s.currentURL()
+	if strings.Contains(currentURL, "accounts.google.com") {
 		return nil, fmt.Errorf("AI Studio redirected the container browser to sign-in; cookie session is invalid")
+	}
+	if strings.Contains(currentURL, "ai.google.dev/gemini-api/docs/available-regions") {
+		return nil, fmt.Errorf("AI Studio rejected the proxy exit region; change the staging proxy IP")
 	}
 	runtime, err := aistudio.ExtractRuntimeConfig(html, authUser)
 	if err != nil {
@@ -173,10 +185,12 @@ func (s *ChromeSession) Prepare(cookies, authUser string) (map[string]any, error
 	if err := s.primeNativeGenerate(primeContext); err != nil {
 		return nil, err
 	}
-	identityContext, identityCancel := context.WithTimeout(s.ctx, 15*time.Second)
-	defer identityCancel()
-	if err := s.waitForRPCIdentity(identityContext); err != nil {
-		return nil, err
+	if profile["x-client-data"] == "" {
+		identityContext, identityCancel := context.WithTimeout(s.ctx, 15*time.Second)
+		defer identityCancel()
+		if err := s.waitForRPCIdentity(identityContext); err != nil {
+			return nil, err
+		}
 	}
 	for name, value := range s.observedTransportProfile() {
 		profile[name] = value
@@ -212,8 +226,11 @@ func (s *ChromeSession) prepareChatGPT(importCookies bool) error {
 			return err
 		}
 	}
-	ctx, cancel := context.WithTimeout(s.ctx, 45*time.Second)
+	ctx, cancel := context.WithTimeout(s.ctx, 90*time.Second)
 	defer cancel()
+	if err := chromedp.Run(ctx, page.BringToFront()); err != nil {
+		return fmt.Errorf("activate ChatGPT page: %w", err)
+	}
 	navigationErr := chromedp.Run(ctx, chromedp.Navigate("https://chatgpt.com/"))
 	if navigationErr != nil && !strings.Contains(navigationErr.Error(), "net::ERR_ABORTED") {
 		return fmt.Errorf("open ChatGPT profile: %w", navigationErr)
@@ -227,6 +244,9 @@ func (s *ChromeSession) prepareChatGPT(importCookies bool) error {
 	cookies, err := s.readCookiesForURL("https://chatgpt.com/")
 	if err != nil {
 		return err
+	}
+	if s.spec.ChatGPTCookieFile != "" && len(cookies) == 0 {
+		return fmt.Errorf("ChatGPT session cookies are expired or rejected")
 	}
 	records := make([]aistudio.CookieRecord, 0, len(cookies))
 	for _, cookie := range cookies {
@@ -285,45 +305,78 @@ func (s *ChromeSession) refreshChatGPTCookies() error {
 	return nil
 }
 
-func (s *ChromeSession) PressChatGPTEnter(submitNonce string) error {
+func (s *ChromeSession) PressChatGPTEnter(submitNonce string, done <-chan struct{}) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.ctx == nil {
+		return fmt.Errorf("ChatGPT browser is not started")
+	}
 	encodedNonce, err := json.Marshal(submitNonce)
 	if err != nil {
 		return err
 	}
-	// The extension may reload an existing ChatGPT tab before preparing the
-	// composer. The session context owns that same tab and survives navigation.
-	time.Sleep(2 * time.Second)
-	predicate := fmt.Sprintf(`document.querySelector("#prompt-textarea")?.dataset.aistudioSubmitNonce === %s`, encodedNonce)
-	// The extension can spend up to 45 seconds waiting for a reloaded ChatGPT
-	// tab before it writes the nonce. Keep the trusted Enter step outside that
-	// smaller browser-side deadline so a slow but healthy tab can finish.
-	deadline := time.Now().Add(60 * time.Second)
+	// The nonce/readiness predicate below synchronizes with the extension;
+	// an unconditional delay adds latency even when the composer is ready.
+	predicate := fmt.Sprintf(`(() => {
+		const challenge = document.title.includes('Just a moment') ||
+			Boolean(document.querySelector('iframe[src*="challenges.cloudflare.com"]'));
+		const composer = [...document.querySelectorAll('%s')].find((element) => element.getClientRects().length > 0);
+		if (composer && document.documentElement.dataset.aistudioSubmitNonce === %s &&
+			!composer.textContent.trim()) {
+			composer.focus();
+			document.execCommand('insertText', false, '.');
+		}
+		const send = [...document.querySelectorAll('button')].find((button) =>
+			button.getClientRects().length > 0 && !button.disabled &&
+			(button.getAttribute('data-testid') === 'send-button' ||
+			(button.getAttribute('aria-label') || '').trim().toLowerCase() === 'send'));
+		return {ready: Boolean(composer && send && composer.textContent.trim() &&
+			document.documentElement.dataset.aistudioSubmitNonce === %s), challenge};
+	})()`, chatGPTComposerSelector, encodedNonce, encodedNonce)
+	// Wait for the extension to finish preparing a potentially slow tab.
+	deadline := time.Now().Add(120 * time.Second)
 	var lastErr error
 	probeLogged := false
 	for time.Now().Before(deadline) {
-		ctx, cancel := context.WithTimeout(s.ctx, 2*time.Second)
-		var ready bool
-		lastErr = chromedp.Run(ctx, chromedp.Evaluate(predicate, &ready))
+		select {
+		case <-done:
+			return nil
+		default:
+		}
+		ctx, cancel := context.WithTimeout(s.ctx, 10*time.Second)
+		var probe struct {
+			Ready     bool `json:"ready"`
+			Challenge bool `json:"challenge"`
+		}
+		lastErr = chromedp.Run(ctx, chromedp.Evaluate(predicate, &probe))
+		select {
+		case <-done:
+			cancel()
+			return nil
+		default:
+		}
 		if !probeLogged {
-			log.Printf("ChatGPT composer probe browser=%s composerContextReady=%t nonceMatches=%t error=%v", s.spec.ID, lastErr == nil, ready, lastErr)
+			log.Printf("ChatGPT composer probe browser=%s composerContextReady=%t nonceMatches=%t challenge=%t error=%v", s.spec.ID, lastErr == nil, probe.Ready, probe.Challenge, lastErr)
 			probeLogged = true
 		}
-		if lastErr == nil && ready {
+		if lastErr == nil && probe.Challenge {
+			cancel()
+			return fmt.Errorf("ChatGPT browser challenge is waiting for native completion")
+		}
+		if lastErr == nil && probe.Ready {
 			var clicked bool
 			lastErr = chromedp.Run(ctx, chromedp.Evaluate(`(() => {
-				const button = document.querySelector('[data-testid="send-button"]');
-				if (!button || button.disabled) return false;
+				const button = [...document.querySelectorAll('button')].find((candidate) => {
+					const label = (candidate.getAttribute('aria-label') || '').trim().toLowerCase();
+					return !candidate.disabled && candidate.getClientRects().length > 0 &&
+						(candidate.getAttribute('data-testid') === 'send-button' || label === 'send' || label.startsWith('send '));
+				});
+				if (!button) return false;
 				button.click();
 				return true;
 			})()`, &clicked))
 			if lastErr == nil && !clicked {
 				lastErr = fmt.Errorf("ChatGPT send button is unavailable")
-			}
-			if lastErr != nil {
-				lastErr = chromedp.Run(ctx,
-					chromedp.Focus("#prompt-textarea", chromedp.ByQuery),
-					chromedp.KeyEvent(kb.Enter),
-				)
 			}
 			if lastErr == nil {
 				cancel()
@@ -332,6 +385,11 @@ func (s *ChromeSession) PressChatGPTEnter(submitNonce string) error {
 		}
 		cancel()
 		time.Sleep(100 * time.Millisecond)
+	}
+	select {
+	case <-done:
+		return nil
+	default:
 	}
 	if lastErr == nil {
 		lastErr = context.DeadlineExceeded
@@ -469,6 +527,7 @@ func (s *ChromeSession) currentURL() string {
 func (s *ChromeSession) Close() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.started.Store(false)
 	if s.cancel != nil {
 		s.cancel()
 		s.cancel = nil

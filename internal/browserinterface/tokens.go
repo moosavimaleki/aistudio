@@ -1,9 +1,12 @@
 package browserinterface
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"sync"
+
+	"github.com/hamed/aistudio-api/internal/metrics"
 )
 
 type TokenService struct {
@@ -26,6 +29,10 @@ func NewTokenService(broker *Broker, fleet *Fleet) *TokenService {
 	}
 }
 func (s *TokenService) Create(body map[string]any) (map[string]any, error) {
+	return s.CreateContext(context.Background(), body)
+}
+
+func (s *TokenService) CreateContext(ctx context.Context, body map[string]any) (map[string]any, error) {
 	if enabled, ok := body["attestationEnabled"].(bool); ok && !enabled {
 		return map[string]any{"token": ""}, nil
 	}
@@ -38,7 +45,9 @@ func (s *TokenService) Create(body map[string]any) (map[string]any, error) {
 		return nil, err
 	}
 	lock := s.browserLock(browserID)
+	locked := metrics.Phase(ctx, "profile_queue")
 	lock.Lock()
+	locked()
 	defer lock.Unlock()
 	spec, err := s.fleet.Spec(browserID)
 	if err != nil {
@@ -52,7 +61,9 @@ func (s *TokenService) Create(body map[string]any) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
+	ready := metrics.Phase(ctx, "page_ready")
 	prepared, err := session.Prepare(cookies, authUser)
+	ready()
 	if err != nil {
 		return nil, err
 	}
@@ -62,7 +73,11 @@ func (s *TokenService) Create(body map[string]any) (map[string]any, error) {
 	if providerSelected {
 		payload["providerIndex"] = providerIndex
 	}
-	request, err := s.broker.Request(payload, browserID)
+	generated := metrics.Phase(ctx, "extension_token")
+	jobContext, cancel := context.WithTimeout(ctx, s.broker.timeout)
+	defer cancel()
+	request, err := s.broker.RequestContext(jobContext, payload, browserID)
+	generated()
 	if err != nil {
 		return nil, err
 	}
@@ -77,7 +92,9 @@ func (s *TokenService) Create(body map[string]any) (map[string]any, error) {
 		}
 		s.activate(browserID, sessionID, providerIndex)
 	}
+	cookiesReady := metrics.Phase(ctx, "cookie_snapshot")
 	current, err := session.Snapshot()
+	cookiesReady()
 	if err != nil {
 		return nil, err
 	}

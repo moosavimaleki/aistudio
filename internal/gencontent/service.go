@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/hamed/aistudio-api/internal/aistudio"
+	"github.com/hamed/aistudio-api/internal/metrics"
 	"math/rand/v2"
 	"net/http"
 	"net/url"
@@ -153,7 +154,9 @@ func (s *Service) noUsableProfileError(profiles []BrowserProfile) error {
 	}
 }
 func (s *Service) generateOnce(ctx context.Context, input aistudio.GenerateInput) (map[string]any, error) {
+	selected := metrics.Phase(ctx, "gemini_profile_select")
 	profile, err := s.chooseProfile(ctx)
+	selected()
 	if err != nil {
 		return nil, err
 	}
@@ -174,7 +177,9 @@ func (s *Service) generateForBrowser(ctx context.Context, input aistudio.Generat
 }
 
 func (s *Service) generateWithProfile(ctx context.Context, input aistudio.GenerateInput, profile BrowserProfile) (map[string]any, error) {
+	leased := metrics.Phase(ctx, "gemini_pool_queue")
 	lease, err := s.pool.Acquire(ctx)
+	leased()
 	if err != nil {
 		return nil, err
 	}
@@ -192,10 +197,15 @@ func (s *Service) generateWithProfile(ctx context.Context, input aistudio.Genera
 	if err != nil {
 		return nil, err
 	}
-	if _, err = tab.Initialize(ctx); err != nil {
+	initialized := metrics.Phase(ctx, "gemini_bootstrap")
+	_, err = tab.Initialize(ctx)
+	initialized()
+	if err != nil {
 		return nil, s.profileError(profile, err)
 	}
+	uploaded := metrics.Phase(ctx, "gemini_upload")
 	input, err = resolveInlineData(ctx, input, tab)
+	uploaded()
 	if err != nil {
 		return nil, s.profileError(profile, err)
 	}

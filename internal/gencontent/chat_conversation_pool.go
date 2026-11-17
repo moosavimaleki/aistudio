@@ -23,17 +23,31 @@ type chatConversationRouter interface {
 }
 
 type chatConversationRoute struct {
-	Input  chatgptdirect.Input
-	finish func(context.Context, chatgptdirect.Result) error
-	abort  func(context.Context) error
+	Input      chatgptdirect.Input
+	finish     func(context.Context, chatgptdirect.Result) error
+	abort      func(context.Context) error
+	invalidate func(context.Context) error
 }
 
 func (r chatConversationRoute) Finish(ctx context.Context, result chatgptdirect.Result) error {
+	if r.finish == nil {
+		return nil
+	}
 	return r.finish(ctx, result)
 }
 
 func (r chatConversationRoute) Abort(ctx context.Context) error {
+	if r.abort == nil {
+		return nil
+	}
 	return r.abort(ctx)
+}
+
+func (r chatConversationRoute) Invalidate(ctx context.Context) error {
+	if r.invalidate == nil {
+		return nil
+	}
+	return r.invalidate(ctx)
 }
 
 type chatConversationPool struct {
@@ -105,8 +119,11 @@ func (p *chatConversationPool) Route(
 		input.ParentMessageID = history.ParentMessageID
 		input.Messages = []chatgptdirect.Message{messages[lastUser]}
 	} else {
+		// Fork the new topic as an isolated branch under the pooled conversation:
+		// keep the reused conversation_id and the seed's parent, but send only this
+		// turn (IncludeHistory=false) so it branches instead of linearly appending.
 		input.Messages = messages
-		input.IncludeHistory = true
+		input.IncludeHistory = false
 	}
 	return chatConversationRoute{
 		Input: input,
@@ -121,6 +138,14 @@ func (p *chatConversationPool) Route(
 			return p.redis.Set(finishCtx, p.historyKey(key, completed), encoded, 0).Err()
 		},
 		abort: func(abortCtx context.Context) error { return p.release(abortCtx, key, rootID, token) },
+		invalidate: func(invalidateCtx context.Context) error {
+			removeErr := p.redis.HDel(invalidateCtx, p.rootsKey(key), rootID).Err()
+			releaseErr := p.release(invalidateCtx, key, rootID, token)
+			if removeErr != nil {
+				return removeErr
+			}
+			return releaseErr
+		},
 	}, nil
 }
 
@@ -261,6 +286,9 @@ func lastUserIndex(messages []chatgptdirect.Message) int {
 }
 
 func (p *chatConversationPool) release(ctx context.Context, key, id, token string) error {
+	// Request cancellation (including shutdown) must not cancel lease cleanup.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
 	lock := key
 	if id != "" {
 		lock = p.lockKey(key, id)

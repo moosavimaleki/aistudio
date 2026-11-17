@@ -8,6 +8,8 @@ import (
 
 	"github.com/chromedp/cdproto/cdp"
 	"github.com/chromedp/cdproto/fetch"
+	"github.com/chromedp/cdproto/page"
+	"github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/chromedp"
 )
 
@@ -24,16 +26,18 @@ func (s *ChromeSession) primeNativeGenerate(ctx context.Context) error {
 	}()
 
 	pattern := &fetch.RequestPattern{
-		URLPattern:   "*MakerSuiteService/GenerateContent*",
+		URLPattern:   "*GenerateContent*",
 		RequestStage: fetch.RequestStageRequest,
 	}
 	if err := chromedp.Run(s.ctx, fetch.Enable().WithPatterns([]*fetch.RequestPattern{pattern})); err != nil {
 		return err
 	}
 	if err := chromedp.Run(ctx,
+		page.BringToFront(),
 		chromedp.Evaluate(clickConsentScript, nil),
 		chromedp.Sleep(500*time.Millisecond),
-		chromedp.Evaluate(clickRunScript, nil),
+		chromedp.Evaluate(selectWarmupModelScript, nil, func(p *runtime.EvaluateParams) *runtime.EvaluateParams { return p.WithAwaitPromise(true) }),
+		chromedp.Evaluate(clickRunScript, nil, func(p *runtime.EvaluateParams) *runtime.EvaluateParams { return p.WithAwaitPromise(true) }),
 	); err != nil {
 		return fmt.Errorf("start native AI Studio lifecycle: %w", err)
 	}
@@ -47,7 +51,7 @@ func (s *ChromeSession) primeNativeGenerate(ctx context.Context) error {
 }
 
 func (s *ChromeSession) captureNativeGenerate(event *fetch.EventRequestPaused) {
-	if !strings.Contains(event.Request.URL, "MakerSuiteService/GenerateContent") {
+	if !strings.Contains(event.Request.URL, "GenerateContent") {
 		return
 	}
 	s.captureHeaders(event.Request.Headers)
@@ -71,12 +75,29 @@ func (s *ChromeSession) captureNativeGenerate(event *fetch.EventRequestPaused) {
 	}()
 }
 
-const promptSelector = `[aria-label="Enter a prompt"],[placeholder="Enter a prompt"]`
+const promptSelector = `[aria-label="Enter a prompt"],[placeholder="Enter a prompt"],[placeholder*="Start typing a prompt"]`
 
 const clickConsentScript = `(() => {
   const agree = [...document.querySelectorAll("button")]
     .find(button => button.textContent?.trim() === "Agree");
   agree?.click();
+})()`
+
+const selectWarmupModelScript = `(async () => {
+  const waitFor = async (find) => {
+    for (let i = 0; i < 100; i++) {
+      const value = find();
+      if (value) return value;
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    throw new Error("AI Studio model selector did not become ready");
+  };
+  const selector = await waitFor(() => document.querySelector("button.model-selector-card"));
+  if (selector.textContent?.includes("Gemini 3.5 Flash Lite")) return;
+  selector.click();
+  const model = await waitFor(() => [...document.querySelectorAll(".model-title-text")]
+    .find(item => item.textContent?.trim() === "Gemini 3.5 Flash Lite"));
+  model.click();
 })()`
 
 const clickRunScript = `(async () => {
@@ -97,7 +118,7 @@ const clickRunScript = `(async () => {
     inputType: "insertText",
     data: "آزمون آماده‌سازی داخلی",
   }));
-  const run = await waitFor(() => [...document.querySelectorAll('button[type="submit"]')]
+  const run = await waitFor(() => [...document.querySelectorAll('button')]
     .find(button => button.textContent?.includes("Run") &&
       !button.disabled && button.getAttribute("aria-disabled") !== "true"), 30000);
   run.click();

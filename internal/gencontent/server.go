@@ -7,6 +7,7 @@ import (
 	"github.com/hamed/aistudio-api/internal/aistudio"
 	"github.com/hamed/aistudio-api/internal/chatgptdirect"
 	"github.com/hamed/aistudio-api/internal/chatgptweb"
+	"github.com/hamed/aistudio-api/internal/metrics"
 	"net/http"
 	"os"
 	"strings"
@@ -21,12 +22,14 @@ type Server struct {
 	directErr       error
 	conversations   chatConversationRouter
 	conversationErr error
+	video           videoGenerator
+	videoFiles      *videoStore
 	chatMode        string
 }
 
 type chatCompleter interface {
 	Generate(context.Context, string, string) (chatgptweb.Result, error)
-	GenerateImage(context.Context, string, string) (chatgptweb.Result, error)
+	GenerateImage(context.Context, string, string, []chatgptweb.Attachment) (chatgptweb.Result, error)
 }
 
 type directChatCompleter interface {
@@ -57,6 +60,8 @@ func NewServer(service *Service, pool *Pool, dashboard *Dashboard) *Server {
 		directErr:       directErr,
 		conversations:   conversations,
 		conversationErr: conversationErr,
+		video:           service,
+		videoFiles:      newVideoStore(),
 		chatMode:        mode,
 	}
 }
@@ -69,6 +74,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/models/", s.openAIModels)
 	mux.HandleFunc("/v1/chat/completions", s.chatCompletions)
 	mux.HandleFunc("/v1/images/generations", s.imageGenerations)
+	mux.HandleFunc("/v1/videos/generations", s.videoGenerations)
+	mux.HandleFunc("/v1/videos/", s.videoContent)
 	mux.HandleFunc("/v1/projects/", s.vertex)
 	return mux
 }
@@ -164,6 +171,9 @@ func (s *Server) vertex(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 	response := vertexResponse(normalizeModel(model), outcome)
+	metadata := response["labMetadata"].(map[string]any)
+	metadata["timings_ms"] = metrics.Phases(request.Context())
+	metadata["request_id"] = metrics.RequestID(request.Context())
 	if stream {
 		writer.Header().Set("Content-Type", "text/event-stream")
 		writer.Header().Set("X-Lab-Streaming-Mode", "buffered")

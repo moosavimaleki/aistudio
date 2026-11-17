@@ -20,10 +20,12 @@ type BrowserSpec struct {
 	ChatGPTCookieFile                                string
 }
 type Config struct {
-	Browsers         []BrowserSpec
-	DefaultID        string
-	ChatGPTDefaultID string
-	CDPBasePort      int
+	Browsers           []BrowserSpec
+	DefaultID          string
+	ChatGPTDefaultID   string
+	CDPBasePort        int
+	LazyStart          bool
+	ChatGPTRotateEvery int
 }
 
 func LoadConfig() (Config, error) {
@@ -35,7 +37,12 @@ func LoadConfig() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	result := Config{CDPBasePort: 9223}
+	result := Config{CDPBasePort: 9223, LazyStart: os.Getenv("CHROME_LAZY_START") == "true"}
+	if value := os.Getenv("CHATGPT_ROTATE_EVERY"); value != "" {
+		if _, err := fmt.Sscanf(value, "%d", &result.ChatGPTRotateEvery); err != nil || result.ChatGPTRotateEvery < 1 {
+			return Config{}, fmt.Errorf("CHATGPT_ROTATE_EVERY must be positive")
+		}
+	}
 	chatGPTFiles, err := discoverOptionalCookieFiles(os.Getenv("CHATGPT_COOKIE_DIR"))
 	if err != nil {
 		return Config{}, err

@@ -10,23 +10,42 @@ import (
 )
 
 type chatGPTPageState struct {
-	Ready     bool   `json:"ready"`
-	Challenge bool   `json:"challenge"`
-	Title     string `json:"title"`
+	Ready         bool   `json:"ready"`
+	Challenge     bool   `json:"challenge"`
+	LoginRequired bool   `json:"loginRequired"`
+	Title         string `json:"title"`
 }
 
+const chatGPTComposerSelector = `#prompt-textarea, [data-composer-markdown][contenteditable=true]`
+
 const chatGPTPageProbe = `({
-  ready: Boolean(document.querySelector("#prompt-textarea")),
+  ready: Boolean(document.querySelector('#prompt-textarea, [data-composer-markdown][contenteditable=true]')),
   challenge: document.title.includes("Just a moment") ||
     Boolean(document.querySelector('iframe[src*="challenges.cloudflare.com"]')),
+  loginRequired: [...document.querySelectorAll('dialog, [role="dialog"]')].some(
+    (dialog) => /welcome back|choose an account|session has expired|log in to another account/i.test(dialog.textContent || "")
+  ),
   title: document.title,
 })`
+
+func (state chatGPTPageState) usable() bool {
+	return state.Ready && !state.Challenge && !state.LoginRequired
+}
+
+func (state chatGPTPageState) blocked() bool {
+	return state.Challenge || state.LoginRequired
+}
 
 func (s *ChromeSession) waitForChatGPTComposer(ctx context.Context) error {
 	var last chatGPTPageState
 	for {
-		if err := chromedp.Run(ctx, chromedp.Evaluate(chatGPTPageProbe, &last)); err == nil && last.Ready {
-			return nil
+		if err := chromedp.Run(ctx, chromedp.Evaluate(chatGPTPageProbe, &last)); err == nil {
+			if last.LoginRequired {
+				return fmt.Errorf("ChatGPT session requires sign-in in the browser")
+			}
+			if last.usable() {
+				return nil
+			}
 		}
 		select {
 		case <-ctx.Done():
@@ -40,11 +59,29 @@ func (s *ChromeSession) waitForChatGPTComposer(ctx context.Context) error {
 }
 
 func (s *ChromeSession) refreshChatGPTReady() bool {
-	ctx, cancel := context.WithTimeout(s.ctx, 2*time.Second)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.ctx == nil {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(s.ctx, 10*time.Second)
 	defer cancel()
 	var state chatGPTPageState
-	if err := chromedp.Run(ctx, chromedp.Evaluate(chatGPTPageProbe, &state)); err != nil || !state.Ready {
+	if err := chromedp.Run(ctx, chromedp.Evaluate(chatGPTPageProbe, &state)); err != nil {
 		return false
+	}
+	if state.blocked() {
+		s.MarkProviderUnready()
+		return false
+	}
+	if !state.usable() {
+		return false
+	}
+	if s.spec.ChatGPTCookieFile != "" {
+		cookies, err := s.readCookiesForURL("https://chatgpt.com/")
+		if err != nil || len(cookies) == 0 {
+			return false
+		}
 	}
 	s.markProviderReady()
 	return true
@@ -52,4 +89,10 @@ func (s *ChromeSession) refreshChatGPTReady() bool {
 
 func isChatGPTChallengeError(message string) bool {
 	return strings.Contains(strings.ToLower(message), "browser challenge")
+}
+
+func isChatGPTSessionError(message string) bool {
+	message = strings.ToLower(message)
+	return strings.Contains(message, "session cookies are expired or rejected") ||
+		strings.Contains(message, "session requires sign-in")
 }

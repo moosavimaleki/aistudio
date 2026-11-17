@@ -8,7 +8,6 @@ import (
 
 	fhttp "github.com/bogdanfinn/fhttp"
 	tlsclient "github.com/bogdanfinn/tls-client"
-	"github.com/bogdanfinn/tls-client/profiles"
 )
 
 const (
@@ -18,7 +17,6 @@ const (
 
 func newBrowserHTTP(proxyURL string) (tlsclient.HttpClient, error) {
 	options := []tlsclient.HttpClientOption{
-		tlsclient.WithClientProfile(profiles.Chrome_133),
 		tlsclient.WithRandomTLSExtensionOrder(),
 		tlsclient.WithTimeoutSeconds(240),
 		tlsclient.WithNotFollowRedirects(),

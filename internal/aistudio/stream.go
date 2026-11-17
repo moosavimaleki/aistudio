@@ -22,6 +22,9 @@ func CollectGenerateResult(reader io.Reader, onChunk func(any)) (GenerateResult,
 		result.Chunks = append(result.Chunks, chunk)
 		result.FinalText += VisibleTextFromChunk(chunk)
 		result.ModelParts = append(result.ModelParts, ModelPartsFromChunk(chunk)...)
+		if usage := UsageFromChunk(chunk); usage != nil {
+			result.Usage = usage
+		}
 		if object, ok := chunk.(map[string]any); ok {
 			if value := object["finishReason"]; value != nil {
 				result.FinishReason = value
@@ -44,6 +47,40 @@ func CollectGenerateResult(reader io.Reader, onChunk func(any)) (GenerateResult,
 		return result, NewError("STREAM", "GenerateContent returned an empty stream")
 	}
 	return result, nil
+}
+
+// UsageFromChunk decodes the positional usage tuple emitted by GenerateContent.
+func UsageFromChunk(chunk any) map[string]any {
+	var result map[string]any
+	for _, frame := range framesFromChunk(chunk) {
+		values, ok := frame.([]any)
+		if !ok || len(values) < 3 {
+			continue
+		}
+		usage, ok := values[2].([]any)
+		if !ok || len(usage) < 3 {
+			continue
+		}
+		prompt, promptOK := integer(usage[0])
+		candidate, candidateOK := integer(usage[1])
+		total, totalOK := integer(usage[2])
+		if promptOK && candidateOK && totalOK {
+			result = map[string]any{
+				"promptTokenCount":     prompt,
+				"candidatesTokenCount": candidate,
+				"totalTokenCount":      total,
+			}
+		}
+	}
+	return result
+}
+
+func integer(value any) (int64, bool) {
+	number, ok := value.(float64)
+	if !ok || number < 0 || number != float64(int64(number)) {
+		return 0, false
+	}
+	return int64(number), true
 }
 
 func VisibleTextFromChunk(chunk any) string {

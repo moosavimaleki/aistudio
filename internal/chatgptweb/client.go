@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/hamed/aistudio-api/internal/metrics"
 )
 
 type Result struct {
@@ -20,6 +22,12 @@ type Result struct {
 }
 
 type Image struct {
+	MIMEType string `json:"mimeType"`
+	Data     string `json:"data"`
+}
+
+type Attachment struct {
+	Name     string `json:"name"`
 	MIMEType string `json:"mimeType"`
 	Data     string `json:"data"`
 }
@@ -41,20 +49,21 @@ func (e *BridgeError) Error() string {
 func NewClient(factoryOrigin string) *Client {
 	return &Client{
 		endpoint: strings.TrimRight(factoryOrigin, "/") + "/internal/chatgpt/generate",
-		http:     &http.Client{Timeout: 245 * time.Second},
+		http:     &http.Client{Timeout: 420 * time.Second},
 	}
 }
 
 func (c *Client) Generate(ctx context.Context, prompt, browserID string) (Result, error) {
-	return c.generate(ctx, prompt, browserID, false)
+	return c.generate(ctx, prompt, browserID, false, nil)
 }
 
-func (c *Client) GenerateImage(ctx context.Context, prompt, browserID string) (Result, error) {
-	return c.generate(ctx, prompt, browserID, true)
+func (c *Client) GenerateImage(ctx context.Context, prompt, browserID string, attachments []Attachment) (Result, error) {
+	return c.generate(ctx, prompt, browserID, true, attachments)
 }
 
-func (c *Client) generate(ctx context.Context, prompt, browserID string, image bool) (Result, error) {
-	body, err := json.Marshal(map[string]any{"prompt": prompt, "browserId": browserID, "image": image})
+func (c *Client) generate(ctx context.Context, prompt, browserID string, image bool, attachments []Attachment) (Result, error) {
+	defer metrics.Phase(ctx, "gpt_web_bridge")()
+	body, err := json.Marshal(map[string]any{"prompt": prompt, "browserId": browserID, "image": image, "attachments": attachments})
 	if err != nil {
 		return Result{}, err
 	}
@@ -63,11 +72,13 @@ func (c *Client) generate(ctx context.Context, prompt, browserID string, image b
 		return Result{}, err
 	}
 	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("X-Lab-Request-ID", metrics.RequestID(ctx))
 	response, err := c.http.Do(request)
 	if err != nil {
 		return Result{}, err
 	}
 	defer response.Body.Close()
+	metrics.ImportPhases(ctx, "browser_", response.Header.Get("X-Lab-Timings"))
 	if response.StatusCode != http.StatusOK {
 		var failure struct {
 			Error string `json:"error"`

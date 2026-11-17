@@ -3,6 +3,7 @@ package gencontent
 import (
 	"encoding/base64"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -25,14 +26,23 @@ func (s *Server) imageGenerations(writer http.ResponseWriter, request *http.Requ
 		return
 	}
 	var body imageGenerationRequest
-	if !decodeJSON(writer, request, &body) {
+	attachments, ok := readImageGenerationRequest(writer, request, &body)
+	if !ok {
+		return
+	}
+	if body.Model == "" {
+		body.Model = "chatgpt-web"
+	}
+	metrics.SetLabel(request.Context(), "model", body.Model)
+	if body.Model != "chatgpt-web" {
+		openAIError(writer, http.StatusBadRequest, "image generation supports only model=chatgpt-web", "invalid_request_error")
 		return
 	}
 	if strings.TrimSpace(body.Prompt) == "" {
 		openAIError(writer, http.StatusBadRequest, "prompt is required", "invalid_request_error")
 		return
 	}
-	if body.N > 1 {
+	if body.N < 0 || body.N > 1 {
 		openAIError(writer, http.StatusBadRequest, "only one image per request is supported", "invalid_request_error")
 		return
 	}
@@ -40,9 +50,9 @@ func (s *Server) imageGenerations(writer http.ResponseWriter, request *http.Requ
 		openAIError(writer, http.StatusBadRequest, "only response_format=b64_json is supported", "invalid_request_error")
 		return
 	}
+	log.Printf("image generation browser=%s referenceImages=%d", body.BrowserID, len(attachments))
 	prompt := "Generate one image from this request. Return the image in the ChatGPT UI, not text only.\n\n" + body.Prompt
-	metrics.SetLabel(request.Context(), "model", body.Model)
-	result, err := s.chat.GenerateImage(request.Context(), prompt, body.BrowserID)
+	result, err := s.chat.GenerateImage(request.Context(), prompt, body.BrowserID, attachments)
 	if err != nil {
 		openAIError(writer, chatBridgeStatus(err), err.Error(), "browser_bridge_error")
 		return
@@ -68,6 +78,7 @@ func (s *Server) imageGenerations(writer http.ResponseWriter, request *http.Requ
 		"upstream_status": result.UpstreamStatus,
 		"upstream_path":   result.UpstreamPath,
 		"mime_types":      mimeTypes,
+		"reference_count": len(attachments),
 	}
 	writeJSON(writer, http.StatusOK, map[string]any{"created": time.Now().Unix(), "data": data, "lab_metadata": metadata})
 }

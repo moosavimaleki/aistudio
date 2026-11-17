@@ -6,6 +6,8 @@ import (
 	"log"
 	"net/http"
 	"strings"
+
+	"github.com/hamed/aistudio-api/internal/chatgptweb"
 )
 
 type Server struct {
@@ -71,13 +73,21 @@ func (s *Server) chatGenerate(writer http.ResponseWriter, request *http.Request)
 	var result map[string]any
 	var err error
 	if expectImage {
-		result, err = s.chat.GenerateImage(request.Context(), browserID, prompt)
+		attachments, parseErr := chatAttachments(body["attachments"])
+		if parseErr != nil {
+			writeError(writer, http.StatusBadRequest, parseErr)
+			return
+		}
+		log.Printf("ChatGPT image request browser=%s referenceImages=%d", browserID, len(attachments))
+		result, err = s.chat.GenerateImage(request.Context(), browserID, prompt, attachments)
 	} else {
 		result, err = s.chat.Generate(request.Context(), browserID, prompt)
 	}
 	if err != nil {
 		status := http.StatusBadGateway
-		if strings.Contains(err.Error(), "deadline exceeded") {
+		if strings.Contains(err.Error(), "image generation limit reached") {
+			status = http.StatusTooManyRequests
+		} else if strings.Contains(err.Error(), "deadline exceeded") {
 			status = http.StatusGatewayTimeout
 		} else if strings.Contains(err.Error(), "not ready") || strings.Contains(err.Error(), "not connected") {
 			status = http.StatusServiceUnavailable
@@ -160,7 +170,7 @@ func (s *Server) token(writer http.ResponseWriter, request *http.Request) {
 	if !ok {
 		return
 	}
-	result, err := s.tokens.Create(body)
+	result, err := s.tokens.CreateContext(request.Context(), body)
 	if err != nil {
 		writeError(writer, http.StatusBadRequest, err)
 		return
@@ -178,7 +188,8 @@ func (s *Server) next(writer http.ResponseWriter, request *http.Request) {
 		writer.WriteHeader(http.StatusNoContent)
 		return
 	}
-	log.Printf("extension job dispatched id=%s browser=%s kind=%s hasSubmitNonce=%t", job.ID, id, stringValue(job.Payload["kind"]), stringValue(job.Payload["submitNonce"]) != "")
+	attachments, _ := job.Payload["attachments"].([]chatgptweb.Attachment)
+	log.Printf("extension job dispatched id=%s browser=%s kind=%s hasSubmitNonce=%t referenceImages=%d", job.ID, id, stringValue(job.Payload["kind"]), stringValue(job.Payload["submitNonce"]) != "", len(attachments))
 	payload := map[string]any{"id": job.ID}
 	for name, value := range job.Payload {
 		payload[name] = value

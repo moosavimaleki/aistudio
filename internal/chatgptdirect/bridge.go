@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/hamed/aistudio-api/internal/metrics"
 )
 
 type bridgeClient struct {
@@ -36,11 +38,13 @@ func (b *bridgeClient) prepare(ctx context.Context, input prepareRequest) (Artif
 		return Artifacts{}, err
 	}
 	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("X-Lab-Request-ID", metrics.RequestID(ctx))
 	response, err := b.http.Do(request)
 	if err != nil {
 		return Artifacts{}, err
 	}
 	defer closeReadBody(response.Body)
+	metrics.ImportPhases(ctx, "browser_", response.Header.Get("X-Lab-Timings"))
 	if response.StatusCode != http.StatusOK {
 		var failure struct {
 			Error string `json:"error"`

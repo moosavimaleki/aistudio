@@ -1,6 +1,8 @@
 package chatgptdirect
 
-import "strconv"
+import (
+	"strconv"
+)
 
 type Message struct {
 	Role    string

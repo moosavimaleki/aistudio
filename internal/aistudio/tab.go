@@ -10,6 +10,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/hamed/aistudio-api/internal/metrics"
 )
 
 type TabState string
@@ -132,7 +134,9 @@ func (t *Tab) Generate(ctx context.Context, input GenerateInput, onChunk func(an
 			return GenerateResult{}, err
 		}
 		encoded, _ := json.Marshal(payload)
+		headersReceived := metrics.Phase(ctx, "gemini_upstream_headers")
 		response, err := t.HTTP.Request(ctx, "POST", rpcURL, headers, encoded)
+		headersReceived()
 		if err != nil {
 			if attempt < 4 && retryableGenerateTransportError(ctx, err) {
 				log.Printf("GenerateContent transport attempt %d failed; retrying with a fresh token: %v", attempt+1, err)
@@ -144,7 +148,9 @@ func (t *Tab) Generate(ctx context.Context, input GenerateInput, onChunk func(an
 		t.Cookies.ApplyResponse(response)
 		t.syncSession()
 		if response.StatusCode >= 200 && response.StatusCode < 300 {
+			bodyRead := metrics.Phase(ctx, "gemini_response_body")
 			result, collectErr := CollectGenerateResult(response.Body, onChunk)
+			bodyRead()
 			response.Body.Close()
 			if collectErr != nil {
 				return result, collectErr

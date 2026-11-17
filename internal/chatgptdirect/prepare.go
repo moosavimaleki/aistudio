@@ -24,7 +24,7 @@ func (c *Client) prepareTurn(
 	if err != nil {
 		return "", fmt.Errorf("send ChatGPT turn prepare: %w", err)
 	}
-	defer response.Body.Close()
+	defer closeReadBody(response.Body)
 	data, err := readResponseBody(response)
 	if err != nil {
 		return "", fmt.Errorf("read ChatGPT turn prepare response: %w", err)

@@ -98,6 +98,18 @@ func TestFleetHealthRejectsFleetWithoutReadyBrowser(t *testing.T) {
 	}
 }
 
+func TestChatGPTRestartRequiresDisconnect(t *testing.T) {
+	if shouldRestartChatGPTBrowser(true, 100) {
+		t.Fatal("a connected browser may have an active direct Go turn")
+	}
+	if shouldRestartChatGPTBrowser(false, 5) {
+		t.Fatal("a transient disconnect should not restart Chrome")
+	}
+	if !shouldRestartChatGPTBrowser(false, 6) {
+		t.Fatal("a persistently disconnected browser must restart")
+	}
+}
+
 func TestChatGPTPendingJobIsReportedAsActive(t *testing.T) {
 	broker := NewBroker()
 	job := &Job{ID: "job-1", BrowserID: "chatgpt", result: make(chan jobResult, 1)}
@@ -110,10 +122,13 @@ func TestChatGPTPendingJobIsReportedAsActive(t *testing.T) {
 }
 
 func TestSessionStateDoesNotTrustStaleReadiness(t *testing.T) {
-	if state := sessionState(true, map[string]any{"connected": false}); state != "DISCONNECTED" {
+	if state := sessionState(true, map[string]any{"connected": false}, ""); state != "DISCONNECTED" {
 		t.Fatalf("expected disconnected state, got %s", state)
 	}
-	if state := sessionState(true, map[string]any{"connected": true}); state != "READY" {
+	if state := sessionState(true, map[string]any{"connected": true}, ""); state != "READY" {
 		t.Fatalf("expected ready state, got %s", state)
+	}
+	if state := sessionState(false, map[string]any{"connected": true}, "expired"); state != "ERROR" {
+		t.Fatalf("expected error state, got %s", state)
 	}
 }

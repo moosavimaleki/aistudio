@@ -43,7 +43,22 @@ func (p *Process) Start() error {
 	if err := copyExtension(source, extension, p.BrowserID); err != nil {
 		return err
 	}
-	args := []string{"--no-sandbox", "--disable-gpu", "--no-first-run", "--no-default-browser-check", "--disable-search-engine-choice-screen", "--remote-debugging-address=127.0.0.1", fmt.Sprintf("--remote-debugging-port=%d", p.Port), "--user-data-dir=" + profile, "--disable-extensions-except=" + extension, "--load-extension=" + extension, "about:blank"}
+	args := []string{
+		"--no-sandbox",
+		"--disable-gpu",
+		"--no-first-run",
+		"--no-default-browser-check",
+		"--disable-search-engine-choice-screen",
+		"--disk-cache-size=67108864",
+		"--media-cache-size=16777216",
+		"--remote-debugging-address=127.0.0.1",
+		fmt.Sprintf("--remote-debugging-port=%d", p.Port),
+		"--user-data-dir=" + profile,
+		"--disable-extensions-except=" + extension,
+		"--load-extension=" + extension,
+		"about:blank",
+	}
+	args = append(args, resourceFlags(os.Getenv("CHROME_LOW_RESOURCE_MODE"))...)
 	headless := os.Getenv("CHROME_HEADLESS")
 	switch os.Getenv("CHATGPT_MODE") {
 	case "headless":
@@ -53,9 +68,11 @@ func (p *Process) Start() error {
 	}
 	args = append(args, displayFlags(headless)...)
 	if proxy := os.Getenv("LAB_PROXY_URL"); proxy != "" {
-		args = append(args, "--proxy-server="+proxy, "--proxy-bypass-list=127.0.0.1;localhost;<-loopback>")
+		args = append(args, "--proxy-server="+proxy, "--proxy-bypass-list=127.0.0.1;localhost")
 	}
-	p.command = exec.Command(defaultValue(os.Getenv("CHROME_EXECUTABLE"), "/usr/bin/google-chrome"), args...)
+	p.command = exec.Command(defaultValue(os.Getenv("CHROME_EXECUTABLE"), "/opt/cloakbrowser/chrome"), args...)
+	p.command.Stdout = os.Stdout
+	p.command.Stderr = os.Stderr
 	if err := p.command.Start(); err != nil {
 		return err
 	}
@@ -87,7 +104,7 @@ func (p *Process) Stop() {
 	p.command = nil
 }
 func (p *Process) waitReady() error {
-	for attempt := 0; attempt < 100; attempt++ {
+	for attempt := 0; attempt < 600; attempt++ {
 		connection, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", p.Port), 200*time.Millisecond)
 		if err == nil {
 			_ = connection.Close()

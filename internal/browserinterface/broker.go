@@ -78,7 +78,7 @@ func (b *Broker) connected(browserID string) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	last := b.heartbeats[browserID]
-	return !last.IsZero() && time.Since(last) < 5*time.Second
+	return !last.IsZero() && time.Since(last) < 30*time.Second
 }
 func (b *Broker) Complete(id, browserID string, result map[string]any) bool {
 	b.mu.Lock()
@@ -88,6 +88,7 @@ func (b *Broker) Complete(id, browserID string, result map[string]any) bool {
 		return false
 	}
 	delete(b.jobs, id)
+	b.heartbeats[browserID] = time.Now()
 	b.mu.Unlock()
 	if message, _ := result["error"].(string); message != "" {
 		job.result <- jobResult{err: fmt.Errorf("%s", message)}
@@ -110,7 +111,7 @@ func (b *Broker) Health(browserID string) map[string]any {
 	if !last.IsZero() {
 		age = float64(time.Since(last).Milliseconds()) / 1000
 	}
-	return map[string]any{"connected": !last.IsZero() && time.Since(last) < 5*time.Second, "pendingJobs": pending, "heartbeatAgeSeconds": age}
+	return map[string]any{"connected": !last.IsZero() && time.Since(last) < 30*time.Second, "pendingJobs": pending, "heartbeatAgeSeconds": age}
 }
 
 var _ = aistudio.RuntimeConfig{}

@@ -24,7 +24,7 @@ func ExtractRuntimeConfig(document, authUser string) (RuntimeConfig, error) {
 	}
 	apiKey, rawVisitID := extract(apiProperty), extract(visitProperty)
 	if apiKey == "" || rawVisitID == "" {
-		return RuntimeConfig{}, &ClientError{Message: "Bootstrap response does not contain configured runtime markers", Phase: "CONFIG", Diagnostics: map[string]any{"bodyBytes": len(document), "hasAPIKeyMarker": strings.Contains(document, `"`+apiProperty+`"`), "hasVisitIDMarker": strings.Contains(document, `"`+visitProperty+`"`), "looksLikeSignIn": regexp.MustCompile(`(?i)accounts\.google\.com|sign in`).MatchString(document)}}
+		return RuntimeConfig{}, &ClientError{Message: "Bootstrap response does not contain configured runtime markers", Phase: "CONFIG", Diagnostics: map[string]any{"bodyBytes": len(document), "hasAPIKeyMarker": strings.Contains(document, `"`+apiProperty+`"`), "hasVisitIDMarker": strings.Contains(document, `"`+visitProperty+`"`), "looksLikeSignIn": regexp.MustCompile(`(?i)accounts\.google\.com|sign in`).MatchString(document), "looksLikeUnsupportedRegion": strings.Contains(document, "available-regions")}}
 	}
 	disabled := regexp.MustCompile(`"` + regexp.QuoteMeta(attestationProperty) + `"\s*:\s*(?:false|"false")`).MatchString(document)
 	return RuntimeConfig{APIKey: apiKey, VisitID: "v1_" + base64.RawURLEncoding.EncodeToString([]byte(rawVisitID)), AuthUser: authUser, AttestationEnabled: !disabled}, nil

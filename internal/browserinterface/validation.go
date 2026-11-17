@@ -37,7 +37,7 @@ func ValidateTokenRequest(body map[string]any) (map[string]string, string, error
 	if !ok {
 		return nil, "", fmt.Errorf("pending GenerateContent request context is required")
 	}
-	computed, err := aistudio.ContentBindingDigest(payload)
+	computed, err := pendingRequestDigest(request, payload)
 	if err != nil || computed != digest {
 		return nil, "", fmt.Errorf("GenerateContent body does not match digest")
 	}
@@ -51,6 +51,18 @@ func ValidateTokenRequest(body map[string]any) (map[string]string, string, error
 		return nil, "", fmt.Errorf("GenerateContent request session differs from Token Factory")
 	}
 	return headers, authUser, nil
+}
+
+func pendingRequestDigest(request map[string]any, payload []any) (string, error) {
+	endpoint, _ := request["url"].(string)
+	videoURL, err := aistudio.RPCURL("CreateInteractionStream")
+	if err != nil {
+		return "", err
+	}
+	if endpoint == videoURL {
+		return aistudio.VideoContentDigest(payload)
+	}
+	return aistudio.ContentBindingDigest(payload)
 }
 func normalizeHeaders(value any) map[string]string {
 	result := map[string]string{}
