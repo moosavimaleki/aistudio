@@ -44,7 +44,7 @@ RUN rm -f /app/product_collector.py /app/selenium_script.py \
 
 USER seluser
 ENV PORT=3345
-ENV CHROME_EXECUTABLE=/usr/bin/google-chrome
+ENV CHROME_EXECUTABLE=/opt/cloakbrowser/chrome
 ENV CHROME_RUNTIME_DIR=/tmp/aistudio-browsers
 ENV EXTENSION_SOURCE_DIR=/app/extension
 ENV AISTUDIO_RUNTIME_DIR=/app/runtime/state

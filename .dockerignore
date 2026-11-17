@@ -4,6 +4,10 @@ __pycache__
 *.py[cod]
 .git
 test
+qwen-gate
+chatgpt_assets
+aistudio.google.com-*
+artifacts/posters
 
 .env
 COOKIES

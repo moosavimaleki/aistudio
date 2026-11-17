@@ -10,11 +10,12 @@ services:
         HTTP_PROXY: "${BUILD_PROXY_URL:-http://host.docker.internal:10811}"
         HTTPS_PROXY: "${BUILD_PROXY_URL:-http://host.docker.internal:10811}"
         NO_PROXY: "localhost,127.0.0.1"
+      network: "${BUILD_NETWORK:-host}"
     container_name: aistudio-api
     ports:
       - "127.0.0.1:3345:3345"
       - "127.0.0.1:${GENCONTENT_HOST_PORT:-3346}:8000"
-      - "127.0.0.1:${VNC_HOST_PORT:-5901}:5900"
+      - "${VNC_BIND_ADDRESS:-0.0.0.0}:${VNC_HOST_PORT:-4314}:5900"
       - "127.0.0.1:${NOVNC_HOST_PORT:-7900}:7900"
     env_file:
       - ./config/container.env
@@ -22,20 +23,38 @@ services:
     environment:
       CHATGPT_MODE: "${CHATGPT_MODE:-browser}"
       CHATGPT_ENABLED_BROWSER_IDS: "${CHATGPT_ENABLED_BROWSER_IDS:-}"
+      CHROME_EXECUTABLE: /opt/cloakbrowser/chrome
+      VNC_PASSWORD: "${VNC_PASSWORD:-}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./COOKIES:/app/cookies
       - ./CHATGPT_COOKIES:/app/chatgpt-cookies
       - ./.local/chatgpt-session:/app/chatgpt-session:ro
-      - browser_profiles:/app/browser-profiles
+      - ./.local/cloakbrowser:/opt/cloakbrowser:ro
+      - cloak_browser_profiles:/app/browser-profiles
     group_add:
       - "${COOKIE_WRITER_GID:-1000}"
     shm_size: "1gb"
-    restart: unless-stopped
+    mem_limit: "8gb"
+    mem_reservation: "4gb"
+    pids_limit: 4096
+    ulimits:
+      core:
+        soft: 0
+        hard: 0
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    restart: "on-failure:5"
     depends_on:
       redis:
         condition: service_healthy
+    networks:
+      - default
+      - local-infra-net
     healthcheck:
       test: ["CMD", "/app/supervisor/healthcheck"]
       interval: 5s
@@ -46,7 +65,12 @@ services:
     image: redis:7-alpine
     container_name: aistudio-tab-pool-redis
     command: ["redis-server", "--save", "", "--appendonly", "no"]
-    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+    restart: "on-failure:5"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 2s
@@ -54,4 +78,11 @@ services:
       retries: 20
 
 volumes:
+  # Keep the old Chrome volume intact for recovery; CloakBrowser uses its own.
   browser_profiles:
+  cloak_browser_profiles:
+
+networks:
+  local-infra-net:
+    external: true
+    name: local-infra-net

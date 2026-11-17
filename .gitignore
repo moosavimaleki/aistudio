@@ -13,5 +13,6 @@ aistudio.google.com-*
 COOKIES/*.txt
 CHATGPT_COOKIES/*.txt
 chatgpt_assets/
+.local/cloakbrowser/
 config/xray.aistudio.local.json
 .local/chatgpt-session/

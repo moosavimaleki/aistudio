@@ -1,0 +1,4 @@
+services:
+  aistudio:
+    environment:
+      CHATGPT_ENABLED_BROWSER_IDS: chatgpt3

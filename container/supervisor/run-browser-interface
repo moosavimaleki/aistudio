@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-/app/supervisor/wait-display
+case "${CHROME_HEADLESS:-false}" in
+  1|[tT][rR][uU][eE]) ;;
+  *) /app/supervisor/wait-display ;;
+esac
 exec /app/bin/browser-interface
